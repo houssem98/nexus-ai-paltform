@@ -2,7 +2,7 @@
 
 Written 2026-10-25 against the code at commit 18f35ec. The input is `roadmap/worldclassroadmap.md`; this document turns it into an evidence-backed plan and a graph of executable loops (`docs/LOOP_GRAPH.md`).
 
-**How to read the evidence.** Every statement about the current code cites a file and an exact piece of its text, like `server.ts#percentComplete: 100,`. `scripts/graph-lint.mjs` checks every such citation on each `npm run gate`, so when the code changes and the text disappears, the gate fails until this document is corrected. The statuses in section 2 come from reading the code, not from running it: nothing has been executed yet, because dependencies are not installed (L0 T0). That is why no item below is marked REAL.
+**How to read the evidence.** Every statement about the current code cites a file and an exact piece of its text, like `server.ts#percentComplete: 100,`. `scripts/graph-lint.mjs` checks every such citation on each `npm run gate`, so when the code changes and the text disappears, the gate fails until this document is corrected. The statuses in section 2 come from reading the code, not from running it. No item below is marked REAL because no test yet exercises a route; the status of each route and screen is in `docs/audit/CAPABILITY_MATRIX.md` (L0 T3).
 
 ## 1. Goal
 
