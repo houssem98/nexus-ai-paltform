@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "gate": "npm run lint && npm run build && node scripts/gate-guard.mjs"
+    "graph": "node scripts/graph-lint.mjs",
+    "gate": "node scripts/graph-lint.mjs && npm run lint && npm run build && node scripts/gate-guard.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
