@@ -42,7 +42,7 @@ Read on 2026-10-25. Status words: BROKEN means the code does something unsafe or
 
 **Policies: SIMULATED.** Demo mode, model allowlist, retention, deploy approval and rate limits are stored and never enforced. Examples: `server.ts#state.settings.demoMode = demoMode;`, `server.ts#rateLimitPerMinute: Number(rateLimitPerMinute) || 120,`.
 
-**Tests and CI: missing.** Of 46 tracked files, none is a test and none is a CI workflow (checked with git ls-files on 2026-10-25). `package.json` has no test script.
+**Tests and CI: missing.** Of 46 tracked files, none is a test and none is a CI workflow (checked with git ls-files on 2026-10-25). Since L0 T2, `package.json#"test": "node scripts/test.mjs"` runs `server/engine.test.ts` and `server/storage.test.ts` (2 tests) inside `npm run gate`, and fails when zero tests ran. CI is still missing.
 
 **Build: passed** (L0 T1, 2026-10-25). The root devDependency `esbuild ^0.25.0` conflicted with vite 8's peer range and forced `--legacy-peer-deps`, which skipped recharts' `react-is` peer and broke the build; it was dropped, and a plain `npm install --no-package-lock` now resolves. `package.json#"lint": "tsc --noEmit"` under `package.json#"typescript": "^7.0.2"` and `vite build` both exit 0. `bun.lock` still lists the dropped esbuild and was not regenerated: bun is not on PATH.
 
