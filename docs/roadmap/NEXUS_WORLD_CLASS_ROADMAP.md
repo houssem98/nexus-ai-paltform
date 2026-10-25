@@ -44,7 +44,7 @@ Read on 2026-10-25. Status words: BROKEN means the code does something unsafe or
 
 **Tests and CI: missing.** Of 46 tracked files, none is a test and none is a CI workflow (checked with git ls-files on 2026-10-25). `package.json` has no test script.
 
-**Build: UNVERIFIED.** Dependencies are not installed. npm rejects `package.json#"esbuild": "^0.25.0"` against vite 8's optional peer range unless run with `--legacy-peer-deps`. `package.json#"typescript": "^7.0.2"` has never been run on this code here.
+**Build: passed** (L0 T1, 2026-10-25). The root devDependency `esbuild ^0.25.0` conflicted with vite 8's peer range and forced `--legacy-peer-deps`, which skipped recharts' `react-is` peer and broke the build; it was dropped, and a plain `npm install --no-package-lock` now resolves. `package.json#"lint": "tsc --noEmit"` under `package.json#"typescript": "^7.0.2"` and `vite build` both exit 0. `bun.lock` still lists the dropped esbuild and was not regenerated: bun is not on PATH.
 
 ## 3. Strategy
 
