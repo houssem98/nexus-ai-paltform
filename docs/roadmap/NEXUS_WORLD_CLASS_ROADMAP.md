@@ -44,7 +44,7 @@ Read on 2026-10-25. Status words: BROKEN means the code does something unsafe or
 
 **Tests and CI: missing.** Of 46 tracked files, none is a test and none is a CI workflow (checked with git ls-files on 2026-10-25). Since L0 T2, `package.json#"test": "node scripts/test.mjs"` runs `server/engine.test.ts` and `server/storage.test.ts` (2 tests) inside `npm run gate`, and fails when zero tests ran. CI is still missing.
 
-**Build: passed** (L0 T1, 2026-10-25). The root devDependency `esbuild ^0.25.0` conflicted with vite 8's peer range and forced `--legacy-peer-deps`, which skipped recharts' `react-is` peer and broke the build; it was dropped, and a plain `npm install --no-package-lock` now resolves. `package.json#"lint": "tsc --noEmit"` under `package.json#"typescript": "^7.0.2"` and `vite build` both exit 0. `bun.lock` still lists the dropped esbuild and was not regenerated: bun is not on PATH.
+**Build: passed** (L0 T1, 2026-10-25). The root devDependency `esbuild ^0.25.0` conflicted with vite 8's peer range and forced `--legacy-peer-deps`, which skipped recharts' `react-is` peer and broke the build; it was dropped, and a plain `npm install --no-package-lock` now resolves. `package.json#"lint": "tsc --noEmit"` under `package.json#"typescript": "^7.0.2"` and `vite build` both exit 0. `bun.lock` was regenerated with `npx bun@1 install --lockfile-only` (bun 1.4.4; the diff touches only esbuild). The build has no warnings since `vite.config.ts#path.resolve(import.meta.dirname, '.')` replaced `__dirname` and `vite.config.ts#{ name: 'vendor', test: /node_modules/ }` split the 853 kB bundle; the largest chunk is now `charts` at 376 kB.
 
 ## 3. Strategy
 
