@@ -54,19 +54,25 @@ export const DeploymentCenter: React.FC<DeploymentCenterProps> = ({
   );
   const [isCalling, setIsCalling] = useState(false);
   const [callResponse, setCallResponse] = useState<any>(null);
+  // The server shows a key once, when the deployment is published; it lives here only until the page reloads.
+  const [newKeys, setNewKeys] = useState<Record<string, string>>({});
 
   const selectedDep = deployments.find((d) => d.id === selectedDepId) || deployments[0];
+  const selectedKey: string | undefined = selectedDep ? newKeys[selectedDep.id] : undefined;
 
   const curlCommand = selectedDep
     ? `curl -X POST "${window.location.origin}${selectedDep.endpointUrl}" \\
-  -H "Authorization: Bearer ${selectedDep.apiKey}" \\
+  -H "Authorization: Bearer ${selectedKey ?? '<YOUR_API_KEY>'}" \\
   -H "Content-Type: application/json" \\
   -d '${testPayload.replace(/\n\s*/g, '')}'`
     : '';
 
   const handleCopyKey = () => {
-    if (!selectedDep) return;
-    navigator.clipboard.writeText(selectedDep.apiKey);
+    if (!selectedKey) {
+      toast.info('Key Shown Once', 'An API key is shown only when its deployment is published. Publish a new deployment to get one.');
+      return;
+    }
+    navigator.clipboard.writeText(selectedKey);
     setCopiedKey(true);
     toast.success('API Key Copied', 'Copied the API key to the clipboard.');
     setTimeout(() => setCopiedKey(false), 2000);
@@ -93,11 +99,12 @@ export const DeploymentCenter: React.FC<DeploymentCenterProps> = ({
     }
 
     try {
-      const res = await fetch(selectedDep.endpointUrl, {
+      // With the key from this session, call the public endpoint; without it, the signed-in test route.
+      const res = await fetch(selectedKey ? selectedDep.endpointUrl : `/api/v1/deployments/${selectedDep.id}/test-invoke`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${selectedDep.apiKey}`,
+          ...(selectedKey ? { Authorization: `Bearer ${selectedKey}` } : {}),
         },
         body: JSON.stringify(parsed),
       });
@@ -133,6 +140,8 @@ export const DeploymentCenter: React.FC<DeploymentCenterProps> = ({
       toast.success('Endpoint Published', `Deployed to ${deployEnv}. Rate limits are stored but not enforced yet.`);
       if (res.deployment) {
         setSelectedDepId(res.deployment.id);
+        setNewKeys((keys) => ({ ...keys, [res.deployment.id]: res.deployment.apiKey }));
+        toast.info('Copy The API Key Now', 'It is shown only once and is not stored in readable form.');
       }
       if (onRefreshDeployments) onRefreshDeployments();
     } catch (err: any) {

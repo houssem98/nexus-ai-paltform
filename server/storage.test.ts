@@ -1,6 +1,7 @@
 import test, { after, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -77,4 +78,29 @@ test('a write error returns 5xx', async () => {
   }
   assert.ok(status >= 500, `got ${status}`);
   assert.equal(seedSettings().dataRetentionDays, before);
+});
+
+// L1 T7: keys stored in plain text before L1 T7 sat in a git-tracked file, so they count as leaked.
+test('keys stored in plain text before L1 T7 stop working at the next boot', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexus-keys-'));
+  const storage = new URL('./storage.ts', import.meta.url).href;
+  fs.writeFileSync(path.join(dir, 'boot.mjs'), `const { db } = await import(${JSON.stringify(storage)});\nconsole.log(JSON.stringify(db.getState().deployments));\n`);
+  const boot = () => spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), 'boot.mjs'], { cwd: dir, encoding: 'utf-8' });
+  assert.equal(boot().status, 0, 'first boot seeds the store');
+  const file = path.join(dir, 'data', 'nexus-store.json');
+  const old = JSON.parse(fs.readFileSync(file, 'utf-8'));
+  for (const d of old.deployments) {
+    delete d.apiKeyHash;
+    d.apiKey = 'nx_live_leaked';
+  }
+  fs.writeFileSync(file, JSON.stringify(old));
+  const out = boot();
+  assert.equal(out.status, 0, out.stderr);
+  const deployments = JSON.parse(out.stdout.trim().split('\n').pop()!);
+  assert.ok(deployments.length > 0);
+  for (const d of deployments) {
+    assert.equal(d.apiKey, undefined);
+    assert.match(d.apiKeyHash, /^[0-9a-f]{64}$/);
+    assert.notEqual(d.apiKeyHash, createHash('sha256').update('nx_live_leaked').digest('hex'), 'the leaked key no longer matches');
+  }
 });

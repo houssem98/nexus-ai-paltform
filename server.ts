@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { db, simulatedScope, settingsOf, guardrailsOf, orgView, type User } from './server/storage';
 import { validateGraph, runWorkflowExecution, executeAgentDirectly } from './server/engine';
 import { allowed } from './server/permissions';
+import { apiKeyMatches, hashApiKey, newApiKey, publicDeployment } from './server/auth';
 import { bootstrapAdmin, createSession, endSession, publicUser, readSession, sessionCookie, verifyPassword } from './server/auth';
 
 dotenv.config();
@@ -945,7 +946,7 @@ app.get('/api/v1/deployments', (req: Request, res: Response) => {
   const state = db.getState();
   // Deployments made by simulated features are shown only in demo mode.
   const demo = settingsOf(state, res.locals.orgId).demoMode;
-  res.json({ deployments: state.deployments.filter((d) => d.orgId === res.locals.orgId && (demo || !d.simulated)) });
+  res.json({ deployments: state.deployments.filter((d) => d.orgId === res.locals.orgId && (demo || !d.simulated)).map(publicDeployment) });
 });
 
 // Authenticated deployment execution endpoint
@@ -963,8 +964,11 @@ app.post('/api/v1/deployments/:id/execute', async (req: Request, res: Response) 
 
   // Validate API key
   const token = authHeader?.replace('Bearer ', '');
-  if (!token || token !== deployment.apiKey) {
+  if (!apiKeyMatches(token, deployment.apiKeyHash)) {
     return res.status(401).json({ error: 'Unauthorized: Invalid or missing API key' });
+  }
+  if (deployment.status !== 'active') {
+    return res.status(403).json({ error: `This deployment is ${deployment.status}.` });
   }
 
   deployment.invocationsTotal += 1;
@@ -1009,11 +1013,10 @@ app.post('/api/v1/deployments', (req: Request, res: Response) => {
     return res.status(404).json({ error: 'Workflow not found' });
   }
 
+  const key = newApiKey();
   const newDeployment = db.mutate((s) => {
     const id = `dep_${Date.now()}`;
     const slug = (name || workflow.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-    const randomHex = Math.random().toString(36).substring(2, 10);
-    const key = `nx_${environment || 'prod'}_live_${randomHex}${Math.random().toString(36).substring(2, 8)}`;
     const dep = {
       id,
       orgId: res.locals.orgId,
@@ -1024,7 +1027,7 @@ app.post('/api/v1/deployments', (req: Request, res: Response) => {
       name: name || `${workflow.name} (${environment || 'production'})`,
       environment: (environment || 'production') as 'production' | 'staging' | 'sandbox',
       status: 'active' as const,
-      apiKey: key,
+      apiKeyHash: hashApiKey(key),
       rateLimitPerMinute: Number(rateLimitPerMinute) || 120,
       endpointUrl: `/api/v1/deployments/${id}/execute`,
       invocationsTotal: 0,
@@ -1046,7 +1049,7 @@ app.post('/api/v1/deployments', (req: Request, res: Response) => {
     ipAddress: req.ip || '127.0.0.1',
   });
 
-  res.status(201).json({ deployment: newDeployment });
+  res.status(201).json({ deployment: { ...publicDeployment(newDeployment), apiKey: key } });
 });
 
 app.patch('/api/v1/deployments/:id/status', (req: Request, res: Response) => {
@@ -1072,7 +1075,7 @@ app.patch('/api/v1/deployments/:id/status', (req: Request, res: Response) => {
     ipAddress: req.ip || '127.0.0.1',
   });
 
-  res.json({ deployment });
+  res.json({ deployment: publicDeployment(deployment) });
 });
 
 app.delete('/api/v1/deployments/:id', (req: Request, res: Response) => {
@@ -1424,6 +1427,7 @@ app.post('/api/v1/fine-tuning/:id/deploy', demoOnly, (req: Request, res: Respons
   if (!job) return res.status(404).json({ error: 'Job not found' });
 
   const depId = `dep_ft_${Date.now()}`;
+  const key = newApiKey();
   const deployment = db.mutate((s) => {
     const dep = {
       id: depId,
@@ -1435,7 +1439,7 @@ app.post('/api/v1/fine-tuning/:id/deploy', demoOnly, (req: Request, res: Respons
       name: `${job.name} (Production Ingress)`,
       environment: 'production' as const,
       status: 'active' as const,
-      apiKey: `nx_live_ft_${Date.now().toString(36)}`,
+      apiKeyHash: hashApiKey(key),
       rateLimitPerMinute: 300,
       endpointUrl: `/api/v1/deployments/${depId}/execute`,
       invocationsTotal: 0,
@@ -1459,7 +1463,7 @@ app.post('/api/v1/fine-tuning/:id/deploy', demoOnly, (req: Request, res: Respons
     ipAddress: (req.ip as string) || '127.0.0.1',
   });
 
-  res.json({ success: true, deployment, job, simulated: true });
+  res.json({ success: true, deployment: { ...publicDeployment(deployment), apiKey: key }, job, simulated: true });
 });
 
 app.delete('/api/v1/fine-tuning/:id', demoOnly, (req: Request, res: Response) => {

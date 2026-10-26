@@ -81,32 +81,38 @@ Test: L1 T4: org B cannot list or delete org A's integration
 
 ### S11 · secrets · critical · confidence high
 The deployment list returns every org's deployments with their API keys to any caller, and the screen copies them to the clipboard.
-Evidence: `server.ts#res.json({ deployments: state.deployments.filter((d) => d.orgId === res.locals.orgId && (demo || !d.simulated)) });`, `src/components/DeploymentCenter.tsx#navigator.clipboard.writeText(selectedDep.apiKey);`
+Fixed in L1 T7: no answer carries a key or its hash except the one that publishes it; the screen keeps that key only until the page reloads.
+Evidence: `server.ts#(demo || !d.simulated)).map(publicDeployment) });`, `src/components/DeploymentCenter.tsx#setNewKeys((keys) => ({ ...keys, [res.deployment.id]: res.deployment.apiKey }));`, `server/tenancy.test.ts#the deployment list holds no key material`
 Test: L1 T7: the deployment list holds no key material
 
 ### S12 · secrets · critical · confidence high
 The test-invoke route runs any deployment with no key and no identity.
-Evidence: `server.ts#/api/v1/deployments/:id/test-invoke`
+Fixed in L1 T3 and T4: it needs a signed-in session, and only for a deployment of the caller's org.
+Evidence: `server.ts#/api/v1/deployments/:id/test-invoke`, `server/tenancy.test.ts#test-invoke without a session gets 401`
 Test: L1 T7: test-invoke without a session gets 401
 
 ### S13 · secrets · high · confidence high
 Keys are predictable: built from Math.random, or from the clock for fine-tuned deployments.
-Evidence: `server.ts#const randomHex = Math.random().toString(36).substring(2, 10);`, `server.ts#nx_live_ft_`
+Fixed in L1 T7: every key, fine-tuned deployments included, is 32 bytes from crypto.randomBytes.
+Evidence: `server/auth.ts#export const newApiKey = () =>`, `server/tenancy.test.ts#a new key has 32 bytes from node:crypto randomBytes`
 Test: L1 T7: a new key has 32 bytes from node:crypto randomBytes
 
 ### S14 · secrets · high · confidence high
 Keys are stored in plaintext in the store file, which git tracks, so every key created while the app runs lands in the working tree and can be committed.
-Evidence: `server.ts#apiKey: key,`, `server/storage.ts#const DATA_FILE = path.join(DATA_DIR, 'nexus-store.json');`, `server/storage.ts#apiKey: 'nx_live_98a72b904e5f4b1192da904721',`
+Fixed in L1 T7: the store holds a SHA-256 hash of each key. Keys stored in plain text before L1 T7 count as leaked and stop working at the next boot, so those deployments must be published again.
+Evidence: `server/storage.ts#apiKeyHash: string;`, `server/storage.ts#d.apiKeyHash ??= unusableKeyHash();`, `server/storage.ts#const DATA_FILE = path.join(DATA_DIR, 'nexus-store.json');`, `server/tenancy.test.ts#a stored deployment holds a key hash, not the key`
 Test: L1 T7: a stored deployment holds a key hash, not the key
 
 ### S15 · secrets · medium · confidence medium
 Keys are compared with plain string inequality, which can leak timing. Exploiting it over a network is hard, hence medium confidence.
-Evidence: `server.ts#token !== deployment.apiKey`
+Fixed in L1 T7: the presented key is hashed and compared with the stored hash by timingSafeEqual.
+Evidence: `server/auth.ts#return presented.length === stored.length && crypto.timingSafeEqual(presented, stored);`, `server/tenancy.test.ts#key verification compares hashes with timingSafeEqual`
 Test: L1 T7: key verification compares hashes with timingSafeEqual
 
 ### S16 · secrets · high · confidence high
 A suspended deployment still executes with a valid key: the execute route never reads the deployment status.
-Evidence: `server.ts#const token = authHeader?.replace('Bearer ', '');`, `server.ts#deployment.invocationsTotal += 1;`
+Fixed in L1 T7: a deployment that is not active answers 403, after the key check.
+Evidence: `server.ts#if (deployment.status !== 'active') {`, `server/tenancy.test.ts#executing a suspended deployment gets 403`
 Test: L1 T7: executing a suspended deployment gets 403
 
 ### S17 · secrets · high · confidence high

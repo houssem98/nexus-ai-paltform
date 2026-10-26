@@ -1,4 +1,5 @@
-import test, { after } from 'node:test';
+import test, { after, mock } from 'node:test';
+import crypto from 'node:crypto';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import fs from 'node:fs';
@@ -14,7 +15,7 @@ delete process.env.GEMINI_API_KEY;
 process.chdir(fs.mkdtempSync(path.join(os.tmpdir(), 'nexus-tenancy-')));
 const { app } = await import('../server');
 const { db, settingsOf } = await import('./storage');
-const { hashPassword, verifyPassword, bootstrapAdmin } = await import('./auth');
+const { hashPassword, verifyPassword, bootstrapAdmin, hashApiKey } = await import('./auth');
 
 const server = app.listen(0);
 await once(server, 'listening');
@@ -412,8 +413,11 @@ test('a deployment key works only for its own deployment, and a deployment respo
   assert.equal((await run(a.deployment, bDeployment.apiKey)).status, 401, "org B's key on org A's deployment");
 
   // The seed deployment's workflow reads a knowledge document; its answer must not carry that document's text.
+  // The seed key is unknown since L1 T7, so the test gives the seed deployment a key of its own.
   const dep = db.getState().deployments.find((d) => d.id === 'dep_prod_fin_reconciliation')!;
-  const res = await run(dep.id, dep.apiKey);
+  const seedKey = `nx_live_${'ab'.repeat(32)}`;
+  db.mutate(() => { dep.apiKeyHash = hashApiKey(seedKey); });
+  const res = await run(dep.id, seedKey);
   assert.equal(res.status, 200);
   const text = await res.text();
   const exec = db.getState().executions.find((e) => e.id === JSON.parse(text).executionId)!;
@@ -567,4 +571,72 @@ test('an approval records the signed-in user who decided it', async () => {
   const other = await waitingForApproval('workspace_admin');
   assert.equal((await as(users.b_org_admin)('POST', `/api/v1/executions/${other}/approve`, { decision: 'approve' })).status, 200);
   assert.equal(approvalOf(other).decidedBy, 'usr_b_org_admin');
+});
+
+// L1 T7: a deployment key is 32 random bytes, shown once, stored as a hash, compared in constant time.
+const execute = (id: string, key?: string) => fetch(`${base}/api/v1/deployments/${id}/execute`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', ...(key === undefined ? {} : { authorization: `Bearer ${key}` }) },
+  body: '{}',
+});
+const publish = async () => {
+  const wf = await made(B('POST', '/api/v1/workflows', { name: 'keyed' }), 'workflow');
+  return made(B('POST', '/api/v1/deployments', { workflowId: wf.id }), 'deployment');
+};
+
+test('a new key has 32 bytes from node:crypto randomBytes', async () => {
+  const spy = mock.method(crypto, 'randomBytes');
+  let dep;
+  try {
+    dep = await publish();
+  } finally {
+    spy.mock.restore();
+  }
+  assert.ok(spy.mock.calls.some((c) => c.arguments[0] === 32), 'randomBytes(32) was called');
+  assert.match(dep.apiKey, /^nx_live_[0-9a-f]{64}$/);
+  assert.notEqual((await publish()).apiKey, dep.apiKey);
+});
+
+test('the deployment list holds no key material', async () => {
+  const dep = await publish();
+  const list = JSON.stringify((await B('GET', '/api/v1/deployments')).body);
+  assert.ok(list.includes(dep.id));
+  for (const secret of [dep.apiKey, hashApiKey(dep.apiKey), 'apiKey']) assert.ok(!list.includes(secret), secret.slice(0, 12));
+  const one = JSON.stringify((await B('PATCH', `/api/v1/deployments/${dep.id}/status`, { status: 'active' })).body);
+  assert.ok(!one.includes(hashApiKey(dep.apiKey)) && !one.includes(dep.apiKey), 'the status answer');
+});
+
+test('a stored deployment holds a key hash, not the key', async () => {
+  const dep = await publish();
+  const stored = db.getState().deployments.find((d) => d.id === dep.id)!;
+  assert.equal(stored.apiKeyHash, hashApiKey(dep.apiKey));
+  assert.ok(!JSON.stringify(db.getState()).includes(dep.apiKey), 'the store');
+  assert.ok(!fs.readFileSync(path.join(process.cwd(), 'data', 'nexus-store.json'), 'utf-8').includes(dep.apiKey), 'the store file');
+});
+
+test('key verification compares hashes with timingSafeEqual', async () => {
+  const dep = await publish();
+  const spy = mock.method(crypto, 'timingSafeEqual');
+  try {
+    assert.equal((await execute(dep.id, dep.apiKey)).status, 200);
+  } finally {
+    spy.mock.restore();
+  }
+  assert.ok(spy.mock.calls.some((c) => (c.arguments[0] as Buffer).length === 32), 'two SHA-256 digests were compared');
+  for (const wrong of [undefined, '', 'nx_live_00', dep.apiKey.slice(0, -1) + (dep.apiKey.endsWith('0') ? '1' : '0')]) {
+    assert.equal((await execute(dep.id, wrong)).status, 401, `key ${String(wrong).slice(0, 12)}`);
+  }
+});
+
+test('executing a suspended deployment gets 403', async () => {
+  const dep = await publish();
+  assert.equal((await B('PATCH', `/api/v1/deployments/${dep.id}/status`, { status: 'suspended' })).status, 200);
+  assert.equal((await execute(dep.id, dep.apiKey)).status, 403);
+  assert.equal((await execute(dep.id, 'nx_live_wrong')).status, 401, 'a wrong key still learns nothing about the status');
+});
+
+test('test-invoke without a session gets 401', async () => {
+  const dep = await publish();
+  const r = await fetch(`${base}/api/v1/deployments/${dep.id}/test-invoke`, { method: 'POST', headers: { authorization: `Bearer ${dep.apiKey}` } });
+  assert.equal(r.status, 401);
 });

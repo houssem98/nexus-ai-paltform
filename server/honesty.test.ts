@@ -15,7 +15,7 @@ process.chdir(fs.mkdtempSync(path.join(os.tmpdir(), 'nexus-honesty-')));
 const { app } = await import('../server');
 const { db, settingsOf } = await import('./storage');
 const { executeAgentDirectly } = await import('./engine');
-const { createSession, SESSION_COOKIE } = await import('./auth');
+const { createSession, SESSION_COOKIE, hashApiKey } = await import('./auth');
 // Signed in as the seed org admin; sign-in itself is tested in tenancy.test.ts.
 const cookie = `${SESSION_COOKIE}=${createSession(db.getState().users[0])}`;
 
@@ -189,10 +189,13 @@ test('a tool node fails outside demo mode instead of inventing a result', async 
 });
 
 test('deployment runs say when they are simulated, and test-invoke reports real success', async () => {
+  // The seed key is unknown since L1 T7, so the test gives the seed deployment a key of its own.
+  const key = `nx_live_${'cd'.repeat(32)}`;
+  db.mutate((s) => { s.deployments.find((d) => d.id === 'dep_prod_fin_reconciliation')!.apiKeyHash = hashApiKey(key); });
   const execute = async () =>
     (await fetch(`${base}/api/v1/deployments/dep_prod_fin_reconciliation/execute`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: 'Bearer nx_live_98a72b904e5f4b1192da904721' },
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
       body: JSON.stringify({ amount: 100 }),
     })).json();
   demo(true);

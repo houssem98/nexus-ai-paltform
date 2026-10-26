@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'async_hooks';
+import { createHash, randomBytes } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 
@@ -229,7 +230,8 @@ export interface Deployment {
   name: string;
   environment: 'production' | 'staging' | 'sandbox';
   status: 'active' | 'suspended' | 'rolled_back';
-  apiKey: string;
+  // SHA-256 of the API key; the key itself is returned once, at creation, and never stored.
+  apiKeyHash: string;
   rateLimitPerMinute: number;
   endpointUrl: string;
   invocationsTotal: number;
@@ -390,6 +392,9 @@ export const simulatedScope = new AsyncLocalStorage<true>();
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const DATA_FILE = path.join(DATA_DIR, 'nexus-store.json');
+
+// The hash of a key nobody holds.
+const unusableKeyHash = () => createHash('sha256').update(randomBytes(32)).digest('hex');
 
 // Initialize database with realistic enterprise data
 function getInitialSeedData(): PlatformState {
@@ -1095,7 +1100,7 @@ When a security alert reports an anomalous egress connection or credential stuff
         name: 'Production AP Automation Webhook',
         environment: 'production',
         status: 'active',
-        apiKey: 'nx_live_98a72b904e5f4b1192da904721',
+        apiKeyHash: unusableKeyHash(),
         rateLimitPerMinute: 120,
         endpointUrl: '/api/v1/deployments/dep_prod_fin_reconciliation/execute',
         invocationsTotal: 1842,
@@ -1453,6 +1458,14 @@ class StorageManager {
     const first = parsed.organizations[0]?.id;
     if ('demoMode' in parsed.settings) parsed.settings = Object.fromEntries(parsed.organizations.map((o: Organization) => [o.id, structuredClone(parsed.settings)]));
     if ('piiMasking' in parsed.guardrails) parsed.guardrails = Object.fromEntries(parsed.organizations.map((o: Organization) => [o.id, structuredClone(parsed.guardrails)]));
+    // Before L1 T7, API keys sat in plain text in a git-tracked file, so they count as leaked: each such deployment
+    // gets the hash of a key nobody holds and answers no caller until it is published again.
+    for (const d of parsed.deployments) {
+      if ('apiKey' in d) {
+        delete d.apiKey;
+        d.apiKeyHash ??= unusableKeyHash();
+      }
+    }
     for (const i of parsed.integrations) {
       i.orgId ??= first;
       i.workspaceId ??= parsed.workspaces.find((w: Workspace) => w.orgId === first)?.id;
