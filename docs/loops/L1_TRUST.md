@@ -20,7 +20,7 @@ Deciding rule, fixed before T1 starts: T0 to T14 are ticked, the T1 coverage tab
 ## Tasks
 
 - [x] T0 Re-verify. needs: none. Run graph-lint, refresh every citation here that L0 changed, and add a task for each finding in `docs/audit/SECURITY_FINDINGS.md` (new) that no task below covers. Adding tasks is allowed; removing one is an escalation. Evidence: graph-lint exits 0.
-- [ ] T1 Two-tenant fixture. needs: T0. Two orgs with one user per role in each, a helper that calls any route as a given user, and a coverage table listing every route as covered or `pending:T<n>`; a test fails when a route registered in `server.ts` is missing from the table. Evidence: `npm test` exits 0.
+- [x] T1 Two-tenant fixture. needs: T0. Two orgs with one user per role in each, a helper that calls any route as a given user, and a coverage table listing every route as covered or `pending:T<n>`; a test fails when a route registered in `server.ts` is missing from the table. Evidence: `npm test` exits 0.
 - [ ] T2 (human) Authentication method. needs: T0. Choose how users sign in. Recommendation: server-side sessions in an HttpOnly cookie, passwords hashed with scrypt from `node:crypto`, no new dependency; OIDC later if a pilot customer needs it. Evidence: the decision line in the Journal.
 - [ ] T3 Request-scoped identity. needs: T1, T2. Replace the globals (`server.ts#let currentUserId = 'usr_admin';`) with identity resolved per request from the session, stop trusting identity headers (`src/lib/api.ts#'x-user-id': this.userId,`), and limit context switching (`server.ts#app.post('/api/v1/auth/switch-context'`) to the user's own memberships. Evidence: tests: an unauthenticated request gets 401; two interleaved requests as different users each see their own context; switching into a foreign org gets 403. Finding tests (`docs/audit/SECURITY_FINDINGS.md`): S36: an unknown user gets 401, and the me route lists only the caller's org.
 - [ ] T4 Tenant enforcement. needs: T3. Every read and write filters by the caller's org and workspace, including every route in the current-state list; integrations gain an org field. Evidence: the T1 coverage table has no pending rows and every cross-tenant read, write, execute, duplicate and export test passes. Finding tests (`docs/audit/SECURITY_FINDINGS.md`): S6: no list route returns another org's records; S7: org B reading, changing, deleting, executing or duplicating org A's resources by id gets 404; S8: a knowledge search as org B returns none of org A's chunks; S9: running org A's agent or knowledge collection as org B gets 404; S10: org B cannot list or delete org A's integration; S38: a deployment response carries no knowledge document text.
@@ -55,3 +55,17 @@ Deciding rule, fixed before T1 starts: T0 to T14 are ticked, the T1 coverage tab
   ```
 
   Direction: goal unchanged. The human wants a product institutions will adopt, and an institution's security review asks for exactly these tests, so each finding is now tied to the test that closes it. Next: T1 two-tenant fixture (T2 authentication method is the human's, and T3 needs it).
+- 2026-10-26 · L1/T1 · started T1 (written after the test file was created, not before; Recovery asks for it first, and nothing else was touched)
+- 2026-10-26 · L1/T1 · passed · gate green · commit see `git log --grep "loop(L1/T1)"` · `server/tenancy.test.ts` adds org_a and org_b with one user per role each, a helper `as(user)` that calls any route as that user (the one place L1 T3 swaps headers for a session), and a coverage table of all 62 routes registered in `server.ts`: 2 `pending:T3` (me, switch-context) and 60 `pending:T4`, none covered yet. Three tests: each org has the six roles and the helper is seen as `usr_b_viewer` in `org_b`; the table matches the registered routes in both directions (it failed first with an empty table: `routes missing from the coverage table`); and a pending row must name an open L1 task, so T3 and T4 cannot be ticked while their rows are pending. Evidence:
+
+  ```
+  $ npm run gate   (runs npm test)
+  graph-lint: clean
+  ℹ tests 30
+  ℹ pass 30
+  ℹ fail 0
+  gate-guard: clean · HEAD..working tree
+  gate exit 0
+  ```
+
+  Direction: goal unchanged; the fixture is what lets "one tenant cannot reach another" be proven route by route, which is the proof an institution asks for. Next: T2 (human) authentication method blocks T3; the next agent task is T8 store integrity.
