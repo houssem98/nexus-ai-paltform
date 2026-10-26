@@ -16,7 +16,7 @@ Deciding rule, fixed before T1 starts and not edited after: T0 to T8 are ticked,
 - [x] T5 (human) Simulated modules. needs: T3. For each fully simulated module the human chooses: label it as demo (served only in demo mode, with `simulated: true`) or remove it. Modules: fine-tuning (`server.ts#evalAccuracy: 98.9,`), data foundry (`server.ts#qualityScore: parseFloat((97.5 + Math.random() * 2).toFixed(1)),`), red-teaming (`server.ts#safetyScore: 98.6,`), compliance scan (`server.ts#score: 99.4,`), audit simulator (`server.ts#app.post('/api/v1/audit-events/simulate'`). Recommendation: label the three studios; remove the compliance scan and the audit simulator, because one reports compliance passes nothing checks and the other writes invented actions by named people into the audit log. Evidence: the human's decision lines in the Journal.
 - [x] T6 Honesty pass. needs: T5. Apply the T5 decisions, then make every remaining number computed or labeled: self-test (`server.ts#latencyMs: 14,`), roadmap endpoint (`server.ts#percentComplete: 100,`, `server.ts#evidence: 'Scoped queries by orgId and workspaceId'`), evaluation runs (`server.ts#actualOutput: c.expectedOutput,`), integration test and sync (`server.ts#statusMessage: 'Connection verified via authenticated TLS gateway',`, `server.ts#recordsSynced: Math.floor(120 + Math.random() * 250),`), analytics (`server.ts#const seededRandom = (seedStr: string) => {`), the chart's fallback (`src/components/ExecutionTrendsChart.tsx#generateFallbackData(timeRange, selectedAgentId);`), the engine's simulated answers (`server/engine.ts#Deterministic enterprise simulation harness`), and the unbacked claims in `docs/architecture.md#SSRF Prevention`. Demo mode is the existing flag (`server.ts#state.settings.demoMode = demoMode;`); with it off, simulated paths refuse. Evidence: one test per item above asserting a computed value, or `simulated: true` with demo mode on and a refusal with it off; graph-lint exits 0 after section 2 of the roadmap is updated to match.
 - [x] T7 Target architecture. needs: T4. Write `docs/architecture/TARGET_ARCHITECTURE.md` (new): request-scoped identity, the single place tenancy is enforced, the store (options for L1 T9: atomic JSON file or `node:sqlite`), the runtime (job record, event log, in-process worker), and for each decision the files it changes, cited. Evidence: graph-lint exits 0.
-- [ ] T8 Independent check. needs: T1, T3, T4, T6, T7. A different model, in at least 3 independent runs, tries to find a wrong status in the matrix or a missed finding, using the attack list in `docs/LOOP_CONVENTIONS.md`; each disagreement becomes a failing test or a corrected row. Evidence: the runs' findings quoted in the Journal, and graph-lint and `npm run gate` exit 0.
+- [x] T8 Independent check. needs: T1, T3, T4, T6, T7. A different model, in at least 3 independent runs, tries to find a wrong status in the matrix or a missed finding, using the attack list in `docs/LOOP_CONVENTIONS.md`; each disagreement becomes a failing test or a corrected row. Evidence: the runs' findings quoted in the Journal, and graph-lint and `npm run gate` exit 0.
 - [ ] T9 (human) Signoff. needs: T8. The human reviews the baseline, matrix, findings and target architecture, approves or edits the L1 task list, and writes the signoff line. Evidence: the signoff line in the Journal.
 
 ## Journal
@@ -54,3 +54,25 @@ Deciding rule, fixed before T1 starts and not edited after: T0 to T8 are ticked,
   - `PATCH /settings` answers 400 unless `demoMode` is a boolean.
 
   UI: 79 one-match edits in 15 components (script in the scratchpad that refuses any edit not matching exactly once), plus two by hand (AgentStudio JSX, KnowledgeCenter button). Every phrase the runs listed is gone or relabeled; WorkflowBuilder rings now come from the server's node records; the agent filter shows only in demo mode. After: `TSC EXIT 0`, `ℹ tests 27`, `ℹ pass 27`, `ℹ fail 0`. graph-lint then flagged 9 stale citations; 8 re-pointed outside journals, and the L5 connector sentence rewritten. Next: steps (3) and (4).
+- 2026-10-26 · L0/T8 · passed · gate green: `GATE EXIT 0`, `graph-lint: 15 docs · 523 citations (108 file, 0 line range, 406 literal, 9 planned)`, `graph-lint: clean`, `ℹ tests 27`, `ℹ pass 27`, `ℹ fail 0`, `✓ built in 564ms`, `gate-guard: clean · HEAD..working tree` · commit see `git log --grep "loop(L0/T8): close"` · tick 10 of 15.
+
+  Runs' findings by kind:
+  - Run 1: 7 missed findings, 4 wrong statuses, 13 honesty.
+  - Run 2: 9 missed findings, 6 wrong statuses, 10 honesty.
+  - Run 3: 11 missed findings, 4 wrong statuses, 10 honesty.
+
+  Reported by all three runs: the async crash, approval cards inventing invoice details, tamper-evidence claims on screens, the Deployments screen's SSRF, mTLS and rate-limit claims, the header's 40/40, the threshold failing open, the step cap ending completed, unflagged records from demo-only routes, connector test and sync changing a shared connector, think-and-generate open to anyone, the workflow builder's client-side run, Observability's fallback figures, CSV cell injection, and WorkflowLibrary's fixed Published.
+
+  Dispositions:
+  - Fixed with a failing test first: S28, the dev-server leak (step 1, commit 78bc3d2), and every honesty item (step 2, commit 223a9e3).
+  - Matrix: 31 rows rewritten. Rows that quoted code containing `||` now quote pipe-free code, because the pipe split their table cells.
+  - Findings: S28 to S38 added, S17 widened to anonymous spend, and the threat model's "checked" note corrected.
+  - Not adopted, because the maker could not confirm them this tick: the command palette never opening from the keyboard, and the user and workspace switchers having no effect. Those rows stay UNVERIFIED.
+  - Owned elsewhere and recorded: the tracked store's unflagged invented audit records (L1 T9), and the real provider path's canned trace, `SUCCESS` on empty output and ignored model choice (L2 T3, T4).
+
+  Totals now:
+  - Findings: 8 critical, 16 high, 13 medium, 1 low.
+  - Routes: 39 BROKEN, 5 PARTIAL, 10 SIMULATED, 8 UNVERIFIED, 0 REAL.
+  - Screens: 11 BROKEN, 4 PARTIAL, 3 SIMULATED, 4 UNVERIFIED.
+
+  Direction: goal unchanged. The independent check showed T6 had missed many invented figures and every real defect class a different model looks for, which is what T8 is for; L0 now states the truth, and L1 owns the fixes. Next: L0 T9 (human) signoff.

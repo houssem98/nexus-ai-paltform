@@ -46,6 +46,14 @@ Read on 2026-10-25. Status words: BROKEN means the code does something unsafe or
 
 **Build: passed** (L0 T1, 2026-10-25). The root devDependency `esbuild ^0.25.0` conflicted with vite 8's peer range and forced `--legacy-peer-deps`, which skipped recharts' `react-is` peer and broke the build; it was dropped, and a plain `npm install --no-package-lock` now resolves. `package.json#"lint": "tsc --noEmit"` under `package.json#"typescript": "^7.0.2"` and `vite build` both exit 0. `bun.lock` was regenerated with `npx bun@1 install --lockfile-only` (bun 1.4.4; the diff touches only esbuild). The build has no warnings since `vite.config.ts#path.resolve(import.meta.dirname, '.')` replaced `__dirname` and `vite.config.ts#{ name: 'vendor', test: /node_modules/ }` split the 853 kB bundle; the largest chunk is now `charts` at 376 kB.
 
+**Found by the independent check (L0 T8).** Three checker runs on a different model added eleven findings (`docs/audit/SECURITY_FINDINGS.md`, S28 to S38).
+- **Fixed in L0 T8:** `npm start` served the data store, keys included, through Vite's dev middleware (S28); invented figures and false claims on 15 screens; records left behind by demo-only routes.
+- **Open, owned by L1:**
+  - One malformed request can stop the process (S29).
+  - A missing or non-numeric amount skips the CFO approval (S30).
+  - A run cut off early is stored as completed (S31).
+  - Editing a deployed workflow is unaudited (S32).
+
 ## 3. Strategy
 
 These are decisions, each with its reason. The loop ledgers turn them into tasks.

@@ -1,6 +1,6 @@
 # Security Findings
 
-L0 T4, written 2026-10-26 against commit ac0984b, from the code read for `docs/audit/CAPABILITY_MATRIX.md` and the citations below, each re-read this tick. It starts from the BROKEN items in section 2 of `docs/roadmap/NEXUS_WORLD_CLASS_ROADMAP.md`. Nothing here was exploited against a running server; confidence says how sure the reading is. `server/security-findings.test.ts` fails when a finding lacks a severity, a confidence, an evidence citation, or the name of the L1 test that will prove the fix, or when that test names a task missing from `docs/loops/L1_TRUST.md`.
+L0 T4, written 2026-10-26 against commit ac0984b, from the code read for `docs/audit/CAPABILITY_MATRIX.md` and the citations below, each re-read this tick. It starts from the BROKEN items in section 2 of `docs/roadmap/NEXUS_WORLD_CLASS_ROADMAP.md`. Until L0 T8 nothing here was exercised against a running server; L0 T8 reproduced several findings in a temporary directory, and each finding says so. Confidence says how sure the reading is. `server/security-findings.test.ts` fails when a finding lacks a severity, a confidence, an evidence citation, or the name of the L1 test that will prove the fix, or when that test names a task missing from `docs/loops/L1_TRUST.md`.
 
 ## Threat model
 
@@ -12,9 +12,11 @@ L0 T4, written 2026-10-26 against commit ac0984b, from the code read for `docs/a
 
 **Severity.** Critical: an anonymous client reads or changes another org's data, takes its keys, or forges records. High: the same with one extra condition, or loss of stored data. Medium: needs an unusual condition, or the risk is latent. Low: hardening.
 
-**Checked and not a finding.** The model key stays server-side: `vite.config.ts` defines no client constant from the environment, and `.gitignore` excludes `.env*` except `.env.example`, which holds only placeholders.
+**Checked and not a finding.** The model key stays server-side: `vite.config.ts` defines no client constant from the environment, and `.gitignore` excludes `.env*` except `.env.example`, which holds only placeholders. This check missed the dev server, which served the data store and the server source until L0 T8 (S28).
 
-**Out of scope for L1, stated so it is not silently waived.** The audit log has no tamper evidence, while the self-test claims it does (`server.ts#cryptographically chained events`). L0 T6 removes or labels that claim; a hash chain is not planned.
+**Out of scope for L1, stated so it is not silently waived.** The audit log has no tamper evidence, while the self-test claims it does (`server.ts#cryptographically chained events`). L0 T6 labeled the self-test simulated and demo-only, and L0 T8 removed the screens' "immutable", "SHA-256" and "WORM" claims; a hash chain is not planned.
+
+**Added in L0 T8.** S28 to S38, and the wider S17, come from three independent checker runs (Sonnet; the maker is Opus). Each was reproduced in a temporary directory or read against the code before being added.
 
 ## Findings
 
@@ -98,9 +100,9 @@ A suspended deployment still executes with a valid key: the execute route never 
 Evidence: `server.ts#const token = authHeader?.replace('Bearer ', '');`, `server.ts#deployment.invocationsTotal += 1;`
 Test: L1 T7: executing a suspended deployment gets 403
 
-### S17 · secrets · medium · confidence high
-The per-deployment rate limit is stored and never enforced, and the body limit is 10 MB, so a key holder can drive unbounded model spend.
-Evidence: `server.ts#rateLimitPerMinute: Number(rateLimitPerMinute) || 120,`, `server.ts#app.use(express.json({ limit: '10mb' }));`
+### S17 · secrets · high · confidence high
+Model spend is unbounded and needs no key. Think-and-generate, the agent test and workflow runs call the provider for any caller, the per-deployment rate limit is stored and never enforced, bodies may be 10 MB, and a cycle repeats agent calls up to the step cap of 25. Widened in L0 T8; it used to say only a key holder could do this.
+Evidence: `server.ts#app.post('/api/v1/ai/think-and-generate'`, `server.ts#rateLimitPerMinute: Number(rateLimitPerMinute) || 120,`, `server.ts#app.use(express.json({ limit: '10mb' }));`
 Test: L1 T11: one call over the rate limit gets 429
 
 ### S18 · secrets · low · confidence medium
@@ -152,3 +154,58 @@ Test: L1 T8: a write error returns 5xx
 Handlers mutate shared state across awaits and outside the store's mutation function, so concurrent requests can lose updates. Not reproduced yet, hence medium confidence.
 Evidence: `server.ts#db.mutate((s) => s);`, `server.ts#const executed = await runWorkflowExecution(executionId);`
 Test: L1 T10: two interleaved mutating requests lose no update
+
+### S28 · secrets · critical · confidence high
+`npm start` runs Vite's dev middleware whenever NODE_ENV is not production, and Vite served every file under the project root that its deny list did not name, including `/data/nexus-store.json` with every deployment key, and the server source. Reproduced: `/data/nexus-store.json 200 contains apiKey: true`. Fixed in L0 T8 by denying the data directory and the server source; that `npm start` runs a dev server at all is for L6 T1.
+Evidence: `vite.config.ts#${root}/data/**`, `server/dev-server.test.ts#the dev server does not serve the data store or the server source`
+Test: L1 T7: the dev server does not serve the data store or the server source
+
+### S29 · availability · high · confidence high
+Express 4 does not catch a rejected promise from an async handler, and nothing handles unhandled rejections, so one request can stop the process for every tenant. A dataset case without keywords, or a stored graph node without a config, makes the evaluation run or a deployment run throw. Reproduced: the request got no response and raised an unhandled rejection.
+Evidence: `server.ts#app.post('/api/v1/evaluations/runs', demoOnly, async (req: Request, res: Response) => {`, `server.ts#cases: cases && cases.length > 0 ? cases : [`
+Test: L1 T11: a malformed dataset or graph fails its request with 4xx and the server keeps answering
+
+### S30 · workflow integrity · high · confidence high
+The CFO approval threshold fails open. A missing, non-numeric or negative amount compares false, so the run takes the auto-post branch; a condition whose edge labels do not contain True or False falls back to the first edge, which sends every seeded SOC alert to approval whatever its score. Reproduced: amounts `"$90,000"`, missing and -90000 completed with no approval. Branch values instead of labels are L3 T2.
+Evidence: `server/engine.ts#if (operator === '>') conditionPassed = Number(actualVal) > Number(targetVal);`, `server/engine.ts#e.label?.toLowerCase().includes(branchLabel.toLowerCase())`
+Test: L1 T11: an invoice without a numeric, non-negative amount is refused before it runs
+
+### S31 · workflow integrity · medium · confidence high
+A run that stops early is stored as completed: at the step cap, or at a node with no outgoing edge. The engine never reads a cancellation, so cancel cannot stop a run, and the approval branch overwrites it. Cancelling a finished run still answers 200 and writes a cancellation to the audit log. Reproduced: a self-loop completed after 25 nodes; cancelling a completed run returned 200 with a new audit record. The step cap is L2 T8 and cancellation L2 T6.
+Evidence: `server/engine.ts#if (execution.status === 'running') {`, `server/engine.ts#const maxSteps = 25;`, `server.ts#Execution ${req.params.id} cancelled by operator.`
+Test: L1 T13: cancelling a finished execution gets 409 and writes no audit record
+
+### S32 · audit integrity · high · confidence high
+Editing a workflow rewrites the active version's graph in place, whether published or deployed, and writes no audit record, so a live deployment silently runs the edited graph, for example one without its approval node. Deployment runs and test-invokes also write no audit record. Frozen versions are L3 T3.
+Evidence: `server.ts#activeVer.nodes = nodes;`
+Test: L1 T13: editing a workflow graph writes an audit record naming the editor
+
+### S33 · workflow integrity · medium · confidence medium
+Agent output is merged over the workflow's trusted variables, including `input`, so a model reply such as `{"input":{"amount":1}}`, reachable by prompt injection through invoice text, changes the amount the threshold reads. Read in code, not reproduced: it needs a provider.
+Evidence: `server/engine.ts#currentVariables = { ...currentVariables, ...agentResult.output, agentDecision: agentResult.output };`
+Test: L1 T11: agent output cannot overwrite the workflow input
+
+### S34 · audit integrity · medium · confidence high
+The CSV export escapes quotes only in the details cell. The action, user, resource and address cells take raw values, some caller-controlled (the user header, a deployment status), so a quote or a newline adds columns or whole forged rows. S23 covers formulas only.
+Evidence: `server.ts#"${log.userId}"`, `server.ts#DEPLOYMENT_${(status as string).toUpperCase()}`
+Test: L1 T13: every CSV export row parses to nine cells, whatever the input
+
+### S35 · persistence · medium · confidence high
+A deployment status update stores any value before its audit line runs. A missing or non-string status makes that line throw after the write, so the request fails with 500 while the bad status stays, and the deployments screen then fails to render it.
+Evidence: `server.ts#dep.status = status;`, `server.ts#DEPLOYMENT_${(status as string).toUpperCase()}`
+Test: L1 T11: an invalid deployment status gets 400 and changes nothing
+
+### S36 · authentication · medium · confidence high
+The me route returns every user of every org, with names, emails and roles, and an unknown user id falls back to the first user, the org admin. S6 lists the other list routes but not users.
+Evidence: `server.ts#availableUsers: state.users,`, `server.ts#const user = state.users.find((u) => u.id === currentUserId) || state.users[0];`
+Test: L1 T3: an unknown user gets 401, and the me route lists only the caller's org
+
+### S37 · availability · medium · confidence medium
+Nothing bounds the store. Any caller can append audit records forever, for example by switching context, bodies of up to 10 MB are stored, and every change rewrites the whole file synchronously. The retention setting is never applied (retention is L6 T4).
+Evidence: `server/storage.ts#this.state.auditLogs.unshift(auditEvent);`, `server.ts#app.use(express.json({ limit: '10mb' }));`
+Test: L1 T11: a request body over the limit gets 413
+
+### S38 · tenant isolation · medium · confidence high
+Deployment runs and test-invokes return the run's variables as output, including the full text of the knowledge document the workflow read, to any caller who can invoke them; test-invoke needs no key.
+Evidence: `server/engine.ts#currentVariables.knowledgeContext = doc?.content || '';`
+Test: L1 T4: a deployment response carries no knowledge document text
