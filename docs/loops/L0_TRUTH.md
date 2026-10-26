@@ -76,3 +76,4 @@ Deciding rule, fixed before T1 starts and not edited after: T0 to T8 are ticked,
   - Screens: 11 BROKEN, 4 PARTIAL, 3 SIMULATED, 4 UNVERIFIED.
 
   Direction: goal unchanged. The independent check showed T6 had missed many invented figures and every real defect class a different model looks for, which is what T8 is for; L0 now states the truth, and L1 owns the fixes. Next: L0 T9 (human) signoff.
+- 2026-10-26 · human decision, not a tick · On the escalated brand names (the studios and the roadmap screen use "Scale" and "SEAL", another company's brand), the human wrote "keep seal". Read as: keep the current names unchanged. The human chose this after the trademark risk was raised; it is not a loop decision. Next: L0 T9 (human) signoff.
