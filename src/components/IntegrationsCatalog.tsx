@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Blocks, CheckCircle2, RefreshCw, Shield, Plus, Trash2, Globe, Key, Lock, ArrowUpDown } from 'lucide-react';
 import { api } from '../lib/api';
 import { useToast } from '../context/ToastContext';
+import { SimulatedBadge } from './SimulatedBadge';
 
 interface IntegrationsCatalogProps {
   integrations: any[];
@@ -31,7 +32,7 @@ export const IntegrationsCatalog: React.FC<IntegrationsCatalogProps> = ({
     try {
       const res = await api.post<any>(`/api/v1/integrations/${id}/test`);
       setTestResults((prev) => ({ ...prev, [id]: res }));
-      toast.success('Connection Verified', `Responded with HTTP ${res.statusCode} (${res.latencyMs}ms)`);
+      toast.info('Simulated Connection Test', 'Demo mode: no network call was made.');
       onRefreshIntegrations();
     } catch (e: any) {
       setTestResults((prev) => ({ ...prev, [id]: { success: false, error: e?.message } }));
@@ -44,8 +45,8 @@ export const IntegrationsCatalog: React.FC<IntegrationsCatalogProps> = ({
   const handleSyncConnector = async (id: string) => {
     setSyncingId(id);
     try {
-      const res = await api.post<any>(`/api/v1/integrations/${id}/sync`);
-      toast.success('Connector Synced', `Cached schemas and credentials in ${res.latencyMs}ms.`);
+      await api.post(`/api/v1/integrations/${id}/sync`);
+      toast.info('Simulated Sync', 'Demo mode: no network call was made.');
       onRefreshIntegrations();
     } catch (e: any) {
       toast.error('Sync Failed', e?.message || 'Sync error');
@@ -92,9 +93,12 @@ export const IntegrationsCatalog: React.FC<IntegrationsCatalogProps> = ({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
         <div>
-          <h1 className="text-xl font-semibold text-white tracking-tight">Tools & Connectors Catalog</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-semibold text-white tracking-tight">Tools & Connectors Catalog</h1>
+            <SimulatedBadge label="Tests and syncs simulated" />
+          </div>
           <p className="text-xs text-slate-400 mt-1">
-            Least-privilege enterprise adapters with server-side credential isolation and SSRF blocklists.
+            Connector registry. No connector makes a network call yet.
           </p>
         </div>
 
@@ -112,10 +116,9 @@ export const IntegrationsCatalog: React.FC<IntegrationsCatalogProps> = ({
         <div className="flex items-center gap-3">
           <Shield className="w-4 h-4 text-slate-400 shrink-0" />
           <div className="text-slate-300">
-            <strong className="text-white">Zero-Trust Egress Guard:</strong> Egress requests block local loopbacks (127.0.0.1, 169.254.169.254). Secrets remain strictly isolated on the backend server.
+            <strong className="text-white">Egress guard: not built yet.</strong> No connector calls out today, so there is nothing to guard; a guard against loopback, private and cloud-metadata addresses comes before any connector makes a real call.
           </div>
         </div>
-        <span className="text-[11px] font-mono text-emerald-400 shrink-0">SSRF Guard Nominal</span>
       </div>
 
       {/* Integrations Grid */}
@@ -206,7 +209,7 @@ export const IntegrationsCatalog: React.FC<IntegrationsCatalogProps> = ({
                   }`}
                 >
                   {testRes.success ? (
-                    <span>✓ HTTP {testRes.statusCode} Verified (Latency: {testRes.latencyMs}ms)</span>
+                    <span>Simulated in demo mode: no network call was made</span>
                   ) : (
                     <span>✗ Failed: {testRes.error}</span>
                   )}

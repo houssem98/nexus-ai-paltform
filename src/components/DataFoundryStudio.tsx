@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useToast } from '../context/ToastContext';
+import { SimulatedBadge } from './SimulatedBadge';
 
 export const DataFoundryStudio: React.FC = () => {
   const toast = useToast();
@@ -136,6 +137,7 @@ export const DataFoundryStudio: React.FC = () => {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-semibold text-white tracking-tight">Scale Data Foundry & RLHF Engine</h1>
+            <SimulatedBadge />
             <span className="text-[11px] font-mono text-purple-400 bg-purple-950/40 px-2.5 py-0.5 rounded border border-purple-500/20">
               Synthetic & Human Annotation
             </span>

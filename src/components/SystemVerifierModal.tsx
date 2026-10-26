@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../lib/api';
 import { useToast } from '../context/ToastContext';
+import { SimulatedBadge } from './SimulatedBadge';
 import {
   CheckCircle2,
   AlertCircle,
@@ -109,7 +110,7 @@ export const SystemVerifierModal: React.FC<SystemVerifierModalProps> = ({ isOpen
       name: 'Zero-Trust RBAC & Immutable Ledger Compliance',
       status: 'idle',
       latencyMs: 0,
-      details: 'Executes 18-point enterprise compliance scan across SOC2, NIST, and HIPAA security controls.',
+      details: 'Reports on roles, approvals and the audit log.',
     },
     {
       id: 'suite_model_customization',
@@ -139,17 +140,11 @@ export const SystemVerifierModal: React.FC<SystemVerifierModalProps> = ({ isOpen
 
   const runAllTests = async () => {
     setIsRunning(true);
-    toast.info('Starting Platform Self-Test', 'Exercising live features across all 11 studios...');
-
     try {
       const res = await api.get<any>('/api/v1/system/self-test');
       if (res && res.suites) {
         setSuites(res.suites);
-        if (res.ok) {
-          toast.success('Platform Fully Operational', `All ${res.totalSuites} studio feature suites verified successfully.`);
-        } else {
-          toast.warning('Self-Test Completed with Warnings', `${res.passedCount} passed, ${res.failedCount} failed.`);
-        }
+        toast.info('Simulated Self-Test', `${res.passedCount} of ${res.totalSuites} suites report passed. These are fixed demo answers, not checks.`);
       }
     } catch (err: any) {
       toast.error('Self-Test Runner Error', err?.message || 'Failed to complete test sweep');
@@ -158,32 +153,20 @@ export const SystemVerifierModal: React.FC<SystemVerifierModalProps> = ({ isOpen
     }
   };
 
+  // A single suite reads the server's self-test, so it obeys the same demo-mode rule as the full run.
   const runSingleTest = async (suiteId: string) => {
     setSuites((prev) =>
       prev.map((s) => (s.id === suiteId ? { ...s, status: 'running' as const } : s))
     );
 
-    const start = Date.now();
     try {
-      if (suiteId === 'suite_seal_red_teaming') {
-        await api.post('/api/v1/red-teaming/test-probe', { prompt: 'Test safety verification probe' });
-      } else if (suiteId === 'suite_governance') {
-        await api.post('/api/v1/governance/compliance-scan', {});
-      } else if (suiteId === 'suite_knowledge_rag') {
-        await api.post('/api/v1/knowledge/search', { query: 'invoice' });
-      } else {
-        await new Promise((r) => setTimeout(r, 180));
-      }
-
-      const elapsed = Date.now() - start;
+      const res = await api.get<any>('/api/v1/system/self-test');
+      const suite: TestSuiteResult | undefined = res.suites.find((s: TestSuiteResult) => s.id === suiteId);
       setSuites((prev) =>
         prev.map((s) =>
-          s.id === suiteId
-            ? { ...s, status: 'passed' as const, latencyMs: elapsed || 24, details: 'Verified live response & state mutation.' }
-            : s
+          s.id === suiteId ? suite ?? { ...s, status: 'failed' as const, details: 'Not in the self-test response.' } : s
         )
       );
-      toast.success('Feature Verified', `Studio test passed in ${elapsed || 24}ms`);
     } catch (err: any) {
       setSuites((prev) =>
         prev.map((s) =>
@@ -259,13 +242,14 @@ export const SystemVerifierModal: React.FC<SystemVerifierModalProps> = ({ isOpen
             </div>
             <div>
               <h2 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
-                Live Platform Feature Verifier
-                <span className="text-[11px] font-mono text-emerald-400 font-semibold px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
-                  {passedCount}/{suites.length} Verified
+                Platform Feature Verifier
+                <SimulatedBadge />
+                <span className="text-[11px] font-mono text-slate-400 font-semibold px-2 py-0.5 rounded bg-white/[0.04] border border-white/[0.08]">
+                  {passedCount}/{suites.length} report passed
                 </span>
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Automated end-to-end execution audit across all 11 Nexus GenAI studios.
+                Fixed demo answers, not checks. Real verification is the test suite in the repository.
               </p>
             </div>
           </div>
@@ -314,7 +298,7 @@ export const SystemVerifierModal: React.FC<SystemVerifierModalProps> = ({ isOpen
           </div>
           <div>
             <span className="text-[11px] text-slate-500 uppercase tracking-wider font-mono">Avg Latency</span>
-            <p className="text-base font-bold text-slate-200 font-mono tabular-nums">{avgLatency || 26} ms</p>
+            <p className="text-base font-bold text-slate-200 font-mono tabular-nums">{avgLatency ? `${avgLatency} ms` : '—'}</p>
           </div>
         </div>
 
@@ -356,7 +340,7 @@ export const SystemVerifierModal: React.FC<SystemVerifierModalProps> = ({ isOpen
           </div>
 
           <div className="text-[11px] text-slate-500 font-mono">
-            Zero Dead Clicks Contract · Production Verified
+            Demo mode only
           </div>
         </div>
 

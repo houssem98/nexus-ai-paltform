@@ -2,6 +2,7 @@ import React from 'react';
 import { Search, ChevronDown } from 'lucide-react';
 import { Breadcrumbs, BreadcrumbEntity } from './Breadcrumbs';
 import { NavTab } from './Sidebar';
+import { SimulatedBadge } from './SimulatedBadge';
 
 interface HeaderProps {
   currentOrg: any;
@@ -19,6 +20,7 @@ interface HeaderProps {
   onSelectEntity?: (id: string) => void;
   onOpenRoadmap?: () => void;
   onOpenVerifier?: () => void;
+  demoMode?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -37,6 +39,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectEntity,
   onOpenRoadmap,
   onOpenVerifier,
+  demoMode,
 }) => {
   return (
     <header className="h-14 border-b border-white/[0.08] bg-[#0A0D14]/75 backdrop-blur-md px-5 flex items-center justify-between sticky top-0 z-30 select-none">
@@ -69,6 +72,8 @@ export const Header: React.FC<HeaderProps> = ({
             onSelectEntity={onSelectEntity}
           />
         </div>
+
+        {demoMode && <SimulatedBadge label="Demo mode · sample data" />}
       </div>
 
       {/* Center: Clean Command Search Input */}

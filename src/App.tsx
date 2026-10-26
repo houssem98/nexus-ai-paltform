@@ -202,6 +202,7 @@ export default function App() {
           onSelectEntity={handleSelectEntity}
           onOpenRoadmap={() => setRoadmapOpen(true)}
           onOpenVerifier={() => setVerifierOpen(true)}
+          demoMode={me?.demoMode}
         />
 
       {/* Main Layout Area */}

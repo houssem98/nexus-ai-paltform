@@ -112,6 +112,7 @@ export interface NodeExecutionRecord {
   tokensUsed?: number;
   estimatedCostUsd?: number;
   thinkingDetails?: string;
+  simulated?: boolean;
 }
 
 export interface ExecutionRecord {
@@ -134,6 +135,7 @@ export interface ExecutionRecord {
   totalCostUsd?: number;
   agentId?: string;
   pendingApprovalNodeId?: string;
+  simulated?: boolean;
 }
 
 export interface KnowledgeDocument {

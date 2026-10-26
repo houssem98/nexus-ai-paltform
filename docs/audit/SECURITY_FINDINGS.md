@@ -45,7 +45,7 @@ Test: L1 T6: a decision on a non-pending approval gets 409
 
 ### S6 · tenant isolation · critical · confidence high
 List routes return every org's records: integrations, evaluations, deployments, audit events, approvals, fine-tuning jobs, synthetic datasets and red-team runs.
-Evidence: `server.ts#res.json({ integrations: state.integrations });`, `server.ts#res.json({ evaluations: state.evaluations });`, `server.ts#res.json({ approvals: state.approvals });`, `server.ts#jobs: state.fineTuningJobs,`, `server.ts#res.json({ datasets: state.syntheticDatasets });`, `server.ts#runs: state.redTeamingRuns,`
+Evidence: `server.ts#res.json({ integrations: state.integrations });`, `server.ts#res.json({ evaluations: state.evaluations });`, `server.ts#res.json({ approvals: state.approvals });`, `server.ts#jobs: state.fineTuningJobs,`, `server.ts#res.json({ datasets: state.syntheticDatasets, simulated: true });`, `server.ts#runs: state.redTeamingRuns,`
 Test: L1 T4: no list route returns another org's records
 
 ### S7 · tenant isolation · critical · confidence high
@@ -109,13 +109,13 @@ Evidence: `server.ts#res.status(500).json({ error: err?.message`
 Test: L1 T11: an invalid body gets 400 without internals
 
 ### S19 · outbound calls · medium · confidence high
-No outbound call exists yet, so there is no SSRF today, but connector base URLs are taken from the caller and stored, and the architecture document claims a protection that does not exist. The risk arrives with real connectors in L5.
+No outbound call exists yet, so there is no SSRF today, but connector base URLs are taken from the caller and stored, and until L0 T6 the architecture document and the connectors screen claimed a protection that does not exist; both now say it is not built. The risk arrives with real connectors in L5.
 Evidence: `server.ts#baseUrl: baseUrl || 'https://api.internal.enterprise/v1',`, `docs/architecture.md#SSRF Prevention`
 Test: L1 T12: assertSafeEgress blocks every egress case in the attack list
 
 ### S20 · audit integrity · critical · confidence high
-A route writes invented actions by named people into the audit log, for example a sign-off on a specific invoice.
-Evidence: `server.ts#app.post('/api/v1/audit-events/simulate'`, `server.ts#Alexandra Vance (Lead Architect) signed off on high-value invoice`
+A route wrote invented actions by named people into the audit log, for example a sign-off on a specific invoice. Fixed in L0 T6: the route and its screen button are gone, and a test asserts the route answers 404; L1 T13 keeps any route from writing caller-supplied audit text.
+Evidence: `server/honesty.test.ts#the compliance scan and the audit simulator are removed`
 Test: L1 T13: no route writes caller-supplied or invented audit records
 
 ### S21 · audit integrity · high · confidence high

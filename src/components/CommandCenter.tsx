@@ -43,8 +43,8 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
 }) => {
   const completedCount = executions.filter((e) => e.status === 'completed').length;
   const totalExecs = executions.length;
-  const successRate = totalExecs > 0 ? ((completedCount / totalExecs) * 100).toFixed(1) : '100.0';
-  const totalCost = executions.reduce((acc, e) => acc + (e.totalCostUsd || 0.003), 0.048);
+  const successRate = totalExecs > 0 ? `${((completedCount / totalExecs) * 100).toFixed(1)}%` : '—';
+  const totalCost = executions.reduce((acc, e) => acc + (e.totalCostUsd || 0), 0);
   const pendingApprovals = approvals.filter((a) => a.status === 'pending');
 
   return (
@@ -55,10 +55,6 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
           <h1 className="text-xl font-semibold text-white tracking-tight">Executive Command Center</h1>
           <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
             <span>Enterprise Multi-Agent Runtime</span>
-            <span aria-hidden="true">·</span>
-            <span>All systems nominal</span>
-            <span aria-hidden="true">·</span>
-            <span className="font-mono tabular-nums text-slate-400">99.98% Gateway Uptime</span>
           </div>
         </div>
 
@@ -111,8 +107,8 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
 
         <div className="p-5">
           <div className="text-xs text-slate-400 mb-1.5">Success Rate</div>
-          <div className="text-2xl font-semibold text-white font-mono tabular-nums">{successRate}%</div>
-          <div className="text-[11px] text-slate-500 mt-1">Calculated across verified runs</div>
+          <div className="text-2xl font-semibold text-white font-mono tabular-nums">{successRate}</div>
+          <div className="text-[11px] text-slate-500 mt-1">Completed runs out of all stored runs</div>
         </div>
 
         <div className="p-5">
@@ -242,10 +238,6 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
                 <h2 className="text-sm font-semibold text-white">Runtime Health</h2>
                 <p className="text-xs text-slate-400">Cluster & reasoning telemetry</p>
               </div>
-              <span className="flex items-center gap-1.5 text-[11px] font-mono text-emerald-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                Nominal
-              </span>
             </div>
 
             <div className="space-y-3 text-xs pt-1">
@@ -260,17 +252,8 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
               <div className="p-3 rounded-lg bg-white/[0.02] border border-white/[0.05] flex items-center justify-between">
                 <div>
                   <span className="text-slate-400 block text-[11px]">Gateway Ingress</span>
-                  <span className="font-semibold text-slate-200">{deployments.length} Active Endpoints</span>
+                  <span className="font-semibold text-slate-200">{deployments.length} Endpoints</span>
                 </div>
-                <span className="text-emerald-400 font-mono text-[11px]">mTLS Verified</span>
-              </div>
-
-              <div className="p-3 rounded-lg bg-white/[0.02] border border-white/[0.05] flex items-center justify-between">
-                <div>
-                  <span className="text-slate-400 block text-[11px]">Vector Cache Hit Ratio</span>
-                  <span className="font-semibold text-slate-200 font-mono tabular-nums">98.4%</span>
-                </div>
-                <span className="text-slate-400 font-mono text-[11px]">&lt;18ms p95</span>
               </div>
             </div>
           </div>

@@ -10,7 +10,7 @@ Deciding rule, fixed before T1 starts: T0 to T9 are ticked, holdout recall@k is 
 
 - Ingestion splits text on blank lines: `server.ts#.split('\n\n')`. Re-indexing only updates a timestamp, while the audit text says vectors were rebuilt: `server.ts#VECTOR_INDEX_OPTIMIZED`, `server.ts#VECTOR_INDEX_FULL_REBUILD`.
 - Search is a substring match over every tenant's documents with a constant score: `server.ts#for (const doc of state.knowledge) {`, `server.ts#relevanceScore: 0.94,`.
-- The engine's knowledge node returns every chunk of one document with a constant score, and falls back to the first document in the store: `server/engine.ts#score: 0.96,`, `server/engine.ts#|| state.knowledge[0];`.
+- The engine's knowledge node returns every chunk of one document, unranked (L0 T6 removed its constant score), and falls back to the first document in the store: `server/engine.ts#const matches = doc?.chunks.map((c) => ({`, `server/engine.ts#|| state.knowledge[0];`.
 - Integration tests and syncs make no network call and report success: `server.ts#statusMessage: 'Connection verified via authenticated TLS gateway',`, `server.ts#integration.status = 'connected';`.
 
 ## Tasks

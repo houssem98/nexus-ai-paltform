@@ -10,7 +10,7 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const app = express();
+export const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: '10mb' }));
@@ -33,6 +33,12 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
+// Simulated features answer only in demo mode, and their responses say simulated: true.
+const demoOnly = (req: Request, res: Response, next: NextFunction) => {
+  if (db.getState().settings.demoMode) return next();
+  res.status(501).json({ error: 'This feature is simulated and runs only in demo mode.' });
+};
+
 // ==================== AUTH & CONTEXT ====================
 app.get('/api/v1/me', (req: Request, res: Response) => {
   const state = db.getState();
@@ -46,6 +52,7 @@ app.get('/api/v1/me', (req: Request, res: Response) => {
     workspace,
     availableWorkspaces: state.workspaces.filter((w) => w.orgId === org.id),
     availableUsers: state.users,
+    demoMode: state.settings.demoMode,
   });
 });
 
@@ -355,6 +362,11 @@ app.get('/api/v1/analytics/trends', (req: Request, res: Response) => {
   };
 
   const agentWeight = agentId === 'all' ? 1.0 : 0.32;
+  // Demo mode blends generated volume into real counts and says so; otherwise every number comes from stored executions.
+  const simulated = state.settings.demoMode;
+  const durationsInRange: number[] = [];
+  const mean = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null);
+  const p95 = (xs: number[]) => (xs.length ? [...xs].sort((a, b) => a - b)[Math.ceil(0.95 * xs.length) - 1] : null);
 
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(now);
@@ -376,6 +388,8 @@ app.get('/api/v1/analytics/trends', (req: Request, res: Response) => {
     const realFailed = matchingReal.filter((e) => e.status === 'failed').length;
     const realTokens = matchingReal.reduce((acc, e) => acc + (e.totalTokens || 0), 0);
     const realCost = matchingReal.reduce((acc, e) => acc + (e.totalCostUsd || 0), 0);
+    const realDurations = matchingReal.flatMap((e) => (e.durationMs === undefined ? [] : [e.durationMs]));
+    durationsInRange.push(...realDurations);
     const realLatency =
       matchingReal.length > 0
         ? Math.round(matchingReal.reduce((acc, e) => acc + (e.durationMs || 1200), 0) / matchingReal.length)
@@ -388,7 +402,7 @@ app.get('/api/v1/analytics/trends', (req: Request, res: Response) => {
     const weekendFactor = isWeekend ? 0.35 : 1.0;
     const growthFactor = 0.85 + ((days - i) / days) * 0.3;
 
-    const baseExecs = Math.round((28 + r1 * 34) * weekendFactor * growthFactor * agentWeight);
+    const baseExecs = simulated ? Math.round((28 + r1 * 34) * weekendFactor * growthFactor * agentWeight) : 0;
     const baseFailed = Math.round(baseExecs * (0.01 + r1 * 0.04));
     const baseCompleted = Math.max(0, baseExecs - baseFailed);
     const baseTokens = Math.round(baseExecs * (2100 + r2 * 1400));
@@ -401,8 +415,10 @@ app.get('/api/v1/analytics/trends', (req: Request, res: Response) => {
     const totalFailed = baseFailed + realFailed;
     const totalTokens = baseTokens + realTokens;
     const totalCost = parseFloat((baseCost + realCost).toFixed(4));
-    const avgLatency = realCount > 0 ? Math.round((baseAvgLatency + realLatency) / 2) : baseAvgLatency;
-    const p95Latency = Math.round(avgLatency * 1.4);
+    const avgLatency = simulated
+      ? realCount > 0 ? Math.round((baseAvgLatency + realLatency) / 2) : baseAvgLatency
+      : mean(realDurations);
+    const p95Latency = simulated ? Math.round((avgLatency ?? 0) * 1.4) : p95(realDurations);
 
     points.push({
       date: dateStr,
@@ -422,17 +438,20 @@ app.get('/api/v1/analytics/trends', (req: Request, res: Response) => {
   const totalFailed = points.reduce((acc, p) => acc + p.failed, 0);
   const totalTokens = points.reduce((acc, p) => acc + p.tokens, 0);
   const totalCostUsd = parseFloat(points.reduce((acc, p) => acc + p.costUsd, 0).toFixed(4));
-  const avgLatencyMs = Math.round(points.reduce((acc, p) => acc + p.avgLatencyMs, 0) / points.length);
+  const avgLatencyMs = simulated
+    ? Math.round(points.reduce((acc, p) => acc + (p.avgLatencyMs ?? 0), 0) / points.length)
+    : mean(durationsInRange);
   const peakDay = points.reduce((max, p) => (p.executions > max.executions ? p : max), points[0]);
 
   res.json({
     timeRangeDays: days,
     agentId,
+    ...(simulated ? { simulated: true } : {}),
     summary: {
       totalExecutions,
       totalCompleted,
       totalFailed,
-      successRate: totalExecutions > 0 ? parseFloat(((totalCompleted / totalExecutions) * 100).toFixed(1)) : 100,
+      successRate: totalExecutions > 0 ? parseFloat(((totalCompleted / totalExecutions) * 100).toFixed(1)) : null,
       totalTokens,
       totalCostUsd,
       avgLatencyMs,
@@ -679,7 +698,7 @@ app.get('/api/v1/integrations', (req: Request, res: Response) => {
   res.json({ integrations: state.integrations });
 });
 
-app.post('/api/v1/integrations/:id/test', (req: Request, res: Response) => {
+app.post('/api/v1/integrations/:id/test', demoOnly, (req: Request, res: Response) => {
   const state = db.getState();
   const integration = state.integrations.find((i) => i.id === req.params.id);
   if (!integration) return res.status(404).json({ error: 'Integration not found' });
@@ -704,6 +723,7 @@ app.post('/api/v1/integrations/:id/test', (req: Request, res: Response) => {
     latencyMs: Math.floor(80 + Math.random() * 60),
     statusCode: 200,
     statusMessage: 'Connection verified via authenticated TLS gateway',
+    simulated: true,
   });
 });
 
@@ -819,7 +839,7 @@ app.post('/api/v1/evaluations/datasets', (req: Request, res: Response) => {
   res.status(201).json({ dataset: newDataset });
 });
 
-app.post('/api/v1/evaluations/runs', async (req: Request, res: Response) => {
+app.post('/api/v1/evaluations/runs', demoOnly, async (req: Request, res: Response) => {
   const { datasetId, targetType, targetId } = req.body;
   const state = db.getState();
   const dataset = state.evaluations.datasets.find((d) => d.id === datasetId) || state.evaluations.datasets[0];
@@ -872,7 +892,7 @@ app.post('/api/v1/evaluations/runs', async (req: Request, res: Response) => {
     ipAddress: req.ip || '127.0.0.1',
   });
 
-  res.json({ run: runRecord });
+  res.json({ run: runRecord, simulated: true });
 });
 
 // ==================== DEPLOYMENTS ====================
@@ -1034,121 +1054,6 @@ app.get('/api/v1/audit-events', (req: Request, res: Response) => {
   res.json({ auditLogs: state.auditLogs.slice(0, 50) });
 });
 
-app.post('/api/v1/audit-events/simulate', (req: Request, res: Response) => {
-  const { eventType } = req.body;
-  let action = 'GATEWAY_HEALTH_CHECK';
-  let resourceType: any = 'integration';
-  let details = 'System ingress verified 99.98% uptime across edge nodes (latency 38ms).';
-  let userId = 'sys_ingress_gateway';
-  let userEmail = 'ingress@nexus-cluster.internal';
-
-  if (eventType === 'agent') {
-    const agentSamples = [
-      {
-        action: 'AGENT_DECISION_QUARANTINE',
-        resourceType: 'agent' as const,
-        details: 'SecOps Autonomous Agent isolated suspect endpoint 192.168.4.110 after correlating MITRE T1059 attack signature.',
-        userId: 'agent_cyber_triage',
-        userEmail: 'agent.triage@nexus.internal',
-      },
-      {
-        action: 'AGENT_FORENSIC_VARIANCE_CLEARED',
-        resourceType: 'agent' as const,
-        details: 'Forensic Audit Agent cross-referenced SAP ERP rate cards against PO-88190 and cleared $14,200 discount discrepancy.',
-        userId: 'agent_invoice_auditor',
-        userEmail: 'agent.auditor@nexus.internal',
-      },
-      {
-        action: 'AGENT_REASONING_CHAIN_EXECUTED',
-        resourceType: 'agent' as const,
-        details: 'Gemini 4 Argon formulated policy reasoning synthesis under High Thinking mode (1,480 reasoning tokens generated).',
-        userId: 'agent_contract_analyst',
-        userEmail: 'agent.contract@nexus.internal',
-      },
-    ];
-    const picked = agentSamples[Math.floor(Math.random() * agentSamples.length)];
-    action = picked.action;
-    resourceType = picked.resourceType;
-    details = picked.details;
-    userId = picked.userId;
-    userEmail = picked.userEmail;
-  } else if (eventType === 'user') {
-    const userSamples = [
-      {
-        action: 'APPROVAL_AUTHORIZED',
-        resourceType: 'approval' as const,
-        details: 'Alexandra Vance (Lead Architect) signed off on high-value invoice INV-2026-9042 ($84,200.00).',
-        userId: 'usr_admin',
-        userEmail: 'alex.vance@nexus-enterprise.internal',
-      },
-      {
-        action: 'WORKFLOW_DEPLOYED_STAGING',
-        resourceType: 'workflow' as const,
-        details: 'Devin Marcus pushed revised SOC Threat Response DAG (v2) to Staging environment.',
-        userId: 'usr_builder',
-        userEmail: 'devin.marcus@nexus-enterprise.internal',
-      },
-      {
-        action: 'SECURITY_TOKEN_ROTATED',
-        resourceType: 'security' as const,
-        details: 'Elena Rostova refreshed mTLS service certificates for production Snowflake connector.',
-        userId: 'usr_operator',
-        userEmail: 'elena.rostova@nexus-enterprise.internal',
-      },
-    ];
-    const picked = userSamples[Math.floor(Math.random() * userSamples.length)];
-    action = picked.action;
-    resourceType = picked.resourceType;
-    details = picked.details;
-    userId = picked.userId;
-    userEmail = picked.userEmail;
-  } else {
-    const sysSamples = [
-      {
-        action: 'DEPLOYMENT_TRAFFIC_SHIFTED',
-        resourceType: 'deployment' as const,
-        details: 'Canary routing rules updated: 15% production traffic allocated to endpoint /v1/pipelines/soc-triage.',
-        userId: 'sys_canary_ingress',
-        userEmail: 'mesh@nexus-cluster.internal',
-      },
-      {
-        action: 'VECTOR_INDEX_OPTIMIZED',
-        resourceType: 'knowledge' as const,
-        details: 'Vector database re-indexed 2,410 chunks across Enterprise Compliance corpus with 0.82 cosine threshold.',
-        userId: 'sys_vector_db',
-        userEmail: 'pgvector@nexus-cluster.internal',
-      },
-      {
-        action: 'SYSTEM_AUTOSCALE_TRIGGERED',
-        resourceType: 'execution' as const,
-        details: 'Inference worker pool autoscaled from 4 to 8 instances to satisfy peak forensic throughput.',
-        userId: 'sys_orchestrator',
-        userEmail: 'kubernetes@nexus-cluster.internal',
-      },
-    ];
-    const picked = sysSamples[Math.floor(Math.random() * sysSamples.length)];
-    action = picked.action;
-    resourceType = picked.resourceType;
-    details = picked.details;
-    userId = picked.userId;
-    userEmail = picked.userEmail;
-  }
-
-  const newLog = db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId,
-    userEmail,
-    action,
-    resourceType,
-    resourceId: `res_${Date.now()}`,
-    details,
-    ipAddress: (req.ip as string) || '10.240.4.18',
-  });
-
-  res.status(201).json({ auditLog: newLog, auditLogs: db.getState().auditLogs.slice(0, 50) });
-});
-
 app.get('/api/v1/approvals', (req: Request, res: Response) => {
   const state = db.getState();
   res.json({ approvals: state.approvals });
@@ -1269,15 +1174,16 @@ const MODEL_CATALOG = [
   },
 ];
 
-app.get('/api/v1/fine-tuning', (req: Request, res: Response) => {
+app.get('/api/v1/fine-tuning', demoOnly, (req: Request, res: Response) => {
   const state = db.getState();
   res.json({
     jobs: state.fineTuningJobs,
     catalog: MODEL_CATALOG,
+    simulated: true,
   });
 });
 
-app.post('/api/v1/fine-tuning', (req: Request, res: Response) => {
+app.post('/api/v1/fine-tuning', demoOnly, (req: Request, res: Response) => {
   const { name, baseModel, method, datasetName, datasetSize, learningRate, epochs, loraRank, loraAlpha, batchSize } = req.body;
   const newJob = db.mutate((state) => {
     const id = `ft_job_${Date.now()}`;
@@ -1333,10 +1239,10 @@ app.post('/api/v1/fine-tuning', (req: Request, res: Response) => {
     ipAddress: (req.ip as string) || '127.0.0.1',
   });
 
-  res.status(201).json({ job: newJob });
+  res.status(201).json({ job: newJob, simulated: true });
 });
 
-app.post('/api/v1/fine-tuning/:id/deploy', (req: Request, res: Response) => {
+app.post('/api/v1/fine-tuning/:id/deploy', demoOnly, (req: Request, res: Response) => {
   const state = db.getState();
   const job = state.fineTuningJobs.find((j) => j.id === req.params.id);
   if (!job) return res.status(404).json({ error: 'Job not found' });
@@ -1376,10 +1282,10 @@ app.post('/api/v1/fine-tuning/:id/deploy', (req: Request, res: Response) => {
     ipAddress: (req.ip as string) || '127.0.0.1',
   });
 
-  res.json({ success: true, deployment, job });
+  res.json({ success: true, deployment, job, simulated: true });
 });
 
-app.delete('/api/v1/fine-tuning/:id', (req: Request, res: Response) => {
+app.delete('/api/v1/fine-tuning/:id', demoOnly, (req: Request, res: Response) => {
   const deleted = db.mutate((state) => {
     const idx = state.fineTuningJobs.findIndex((j) => j.id === req.params.id);
     if (idx === -1) return null;
@@ -1387,16 +1293,16 @@ app.delete('/api/v1/fine-tuning/:id', (req: Request, res: Response) => {
     return removed;
   });
   if (!deleted) return res.status(404).json({ error: 'Job not found' });
-  res.json({ success: true, deletedId: req.params.id });
+  res.json({ success: true, deletedId: req.params.id, simulated: true });
 });
 
 // 2. DATA FOUNDRY & SYNTHETIC DATA ENGINE
-app.get('/api/v1/data-foundry', (req: Request, res: Response) => {
+app.get('/api/v1/data-foundry', demoOnly, (req: Request, res: Response) => {
   const state = db.getState();
-  res.json({ datasets: state.syntheticDatasets });
+  res.json({ datasets: state.syntheticDatasets, simulated: true });
 });
 
-app.post('/api/v1/data-foundry/generate', (req: Request, res: Response) => {
+app.post('/api/v1/data-foundry/generate', demoOnly, (req: Request, res: Response) => {
   const { name, domain, method, count, seedPrompt } = req.body;
   const numCount = Number(count) || 500;
 
@@ -1448,10 +1354,10 @@ app.post('/api/v1/data-foundry/generate', (req: Request, res: Response) => {
     ipAddress: (req.ip as string) || '127.0.0.1',
   });
 
-  res.status(201).json({ dataset });
+  res.status(201).json({ dataset, simulated: true });
 });
 
-app.post('/api/v1/data-foundry/annotate', (req: Request, res: Response) => {
+app.post('/api/v1/data-foundry/annotate', demoOnly, (req: Request, res: Response) => {
   const { datasetId, sampleId, preference, rationale } = req.body;
   const state = db.getState();
   const ds = state.syntheticDatasets.find((d) => d.id === datasetId);
@@ -1464,10 +1370,10 @@ app.post('/api/v1/data-foundry/annotate', (req: Request, res: Response) => {
     db.mutate((s) => s);
   }
 
-  res.json({ success: true, sample });
+  res.json({ success: true, sample, simulated: true });
 });
 
-app.delete('/api/v1/data-foundry/:id', (req: Request, res: Response) => {
+app.delete('/api/v1/data-foundry/:id', demoOnly, (req: Request, res: Response) => {
   const deleted = db.mutate((state) => {
     const idx = state.syntheticDatasets.findIndex((d) => d.id === req.params.id);
     if (idx === -1) return null;
@@ -1475,19 +1381,20 @@ app.delete('/api/v1/data-foundry/:id', (req: Request, res: Response) => {
     return removed;
   });
   if (!deleted) return res.status(404).json({ error: 'Dataset not found' });
-  res.json({ success: true, deletedId: req.params.id });
+  res.json({ success: true, deletedId: req.params.id, simulated: true });
 });
 
 // 3. SCALE SEAL SAFETY, RED-TEAMING & DYNAMIC GUARDRAILS
-app.get('/api/v1/red-teaming', (req: Request, res: Response) => {
+app.get('/api/v1/red-teaming', demoOnly, (req: Request, res: Response) => {
   const state = db.getState();
   res.json({
     runs: state.redTeamingRuns,
     guardrails: state.guardrails,
+    simulated: true,
   });
 });
 
-app.post('/api/v1/red-teaming/execute', (req: Request, res: Response) => {
+app.post('/api/v1/red-teaming/execute', demoOnly, (req: Request, res: Response) => {
   const { targetModel, attackVector } = req.body;
   const newRun = db.mutate((state) => {
     const id = `red_${Date.now()}`;
@@ -1541,10 +1448,10 @@ app.post('/api/v1/red-teaming/execute', (req: Request, res: Response) => {
     ipAddress: (req.ip as string) || '127.0.0.1',
   });
 
-  res.status(201).json({ run: newRun });
+  res.status(201).json({ run: newRun, simulated: true });
 });
 
-app.post('/api/v1/red-teaming/test-probe', (req: Request, res: Response) => {
+app.post('/api/v1/red-teaming/test-probe', demoOnly, (req: Request, res: Response) => {
   const { prompt } = req.body;
   const state = db.getState();
   const lower = (prompt || '').toLowerCase();
@@ -1579,10 +1486,11 @@ app.post('/api/v1/red-teaming/test-probe', (req: Request, res: Response) => {
     category,
     response: responseText,
     latencyMs: Math.floor(18 + Math.random() * 24),
+    simulated: true,
   });
 });
 
-app.patch('/api/v1/red-teaming/guardrails', (req: Request, res: Response) => {
+app.patch('/api/v1/red-teaming/guardrails', demoOnly, (req: Request, res: Response) => {
   const { piiMasking, jailbreakSensitivity, blockCbrnHazards, semanticFirewallEnabled, toxicContentThreshold } = req.body;
   const updated = db.mutate((state) => {
     if (piiMasking !== undefined) state.guardrails.piiMasking = piiMasking;
@@ -1605,11 +1513,11 @@ app.patch('/api/v1/red-teaming/guardrails', (req: Request, res: Response) => {
     ipAddress: (req.ip as string) || '127.0.0.1',
   });
 
-  res.json({ guardrails: updated });
+  res.json({ guardrails: updated, simulated: true });
 });
 
 // Authoritative Roadmap & Release Gates Audit Endpoint
-app.get('/api/v1/roadmap', (req: Request, res: Response) => {
+app.get('/api/v1/roadmap', demoOnly, (req: Request, res: Response) => {
   const state = db.getState();
 
   const roadmapData = {
@@ -1886,7 +1794,7 @@ app.get('/api/v1/roadmap', (req: Request, res: Response) => {
     ],
   };
 
-  res.json(roadmapData);
+  res.json({ ...roadmapData, simulated: true });
 });
 
 // Direct Gemini 4 Argon High-Thinking query endpoint (for instant testing from UI)
@@ -1906,7 +1814,7 @@ app.post('/api/v1/ai/think-and-generate', async (req: Request, res: Response) =>
 });
 
 // ==================== PLATFORM SELF-TEST & VERIFICATION SUITE ====================
-app.get('/api/v1/system/self-test', async (req: Request, res: Response) => {
+app.get('/api/v1/system/self-test', demoOnly, async (req: Request, res: Response) => {
   const startTime = Date.now();
   const state = db.getState();
 
@@ -2020,6 +1928,7 @@ app.get('/api/v1/system/self-test', async (req: Request, res: Response) => {
     failedCount: totalFailed,
     totalDurationMs: Date.now() - startTime,
     suites,
+    simulated: true,
   });
 });
 
@@ -2094,39 +2003,6 @@ app.post('/api/v1/knowledge/reindex-all', (req: Request, res: Response) => {
   });
 });
 
-// Run live compliance & security audit scan
-app.post('/api/v1/governance/compliance-scan', (req: Request, res: Response) => {
-  const state = db.getState();
-  const scanResults = {
-    scanId: `scan_${Date.now()}`,
-    timestamp: new Date().toISOString(),
-    status: 'COMPLIANT',
-    score: 99.4,
-    findings: [
-      { rule: 'SOC2-CC6.1', category: 'Authentication & Access', status: 'PASS', details: 'All 6 enterprise roles enforce least-privilege scoping' },
-      { rule: 'OWASP-LLM01', category: 'Prompt Injection Defense', status: 'PASS', details: 'Delimiter inversion and jailbreak heuristics active' },
-      { rule: 'NIST-AI-100', category: 'Explainability & Reasoning', status: 'PASS', details: 'Thinking tokens recorded in distributed traces' },
-      { rule: 'ISO-27001-A.12', category: 'Audit Logging & Integrity', status: 'PASS', details: `${state.auditLogs.length} immutable events verified without tampering` },
-      { rule: 'HIPAA-164.312', category: 'Data Redaction & PII', status: 'PASS', details: 'Regex and NER redaction pipeline enabled across inputs' },
-    ],
-    summary: 'Full enterprise compliance check verified across 18 operational controls. Zero critical vulnerabilities found.',
-  };
-
-  db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
-    userEmail: 'security@nexus.internal',
-    action: 'SECURITY_AUDIT_EXECUTED',
-    resourceType: 'security',
-    resourceId: scanResults.scanId,
-    details: 'Automated compliance scan completed with 99.4% security score.',
-    ipAddress: req.ip || '127.0.0.1',
-  });
-
-  res.json(scanResults);
-});
-
 // Duplicate agent
 app.post('/api/v1/agents/:id/duplicate', (req: Request, res: Response) => {
   const state = db.getState();
@@ -2192,7 +2068,7 @@ app.post('/api/v1/workflows/:id/duplicate', (req: Request, res: Response) => {
 });
 
 // Force sync integration
-app.post('/api/v1/integrations/:id/sync', (req: Request, res: Response) => {
+app.post('/api/v1/integrations/:id/sync', demoOnly, (req: Request, res: Response) => {
   const state = db.getState();
   const integration = state.integrations.find((i) => i.id === req.params.id);
   if (!integration) return res.status(404).json({ error: 'Integration not found' });
@@ -2218,6 +2094,7 @@ app.post('/api/v1/integrations/:id/sync', (req: Request, res: Response) => {
     recordsSynced: Math.floor(120 + Math.random() * 250),
     latencyMs: Math.floor(65 + Math.random() * 45),
     syncedAt: new Date().toISOString(),
+    simulated: true,
   });
 });
 
@@ -2242,6 +2119,9 @@ async function startServer() {
   });
 }
 
-startServer().catch((err) => {
-  console.error('Fatal server boot failure:', err);
-});
+// Tests import the app and listen on their own port.
+if (process.env.NODE_ENV !== 'test') {
+  startServer().catch((err) => {
+    console.error('Fatal server boot failure:', err);
+  });
+}

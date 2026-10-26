@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { NavTab } from './Sidebar';
+import { SimulatedBadge } from './SimulatedBadge';
 
 interface RoadmapViewerProps {
   isOpen: boolean;
@@ -121,9 +122,7 @@ export const RoadmapViewer: React.FC<RoadmapViewerProps> = ({ isOpen, onClose, o
               <h2 className="text-base font-semibold text-white tracking-tight">
                 Scale GenAI Platform · World-Class Enterprise Roadmap
               </h2>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
-                100% Verified
-              </span>
+              <SimulatedBadge />
             </div>
             <p className="text-xs text-slate-400">
               End-to-end multi-track specification spanning Model Customization, Data Engine, SEAL Safety, Agent Graphs, and LLMOps.
@@ -135,10 +134,10 @@ export const RoadmapViewer: React.FC<RoadmapViewerProps> = ({ isOpen, onClose, o
               onClick={fetchRoadmap}
               disabled={loading}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-xs text-slate-300 hover:text-white transition"
-              title="Refresh live audit"
+              title="Refresh"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-              <span>{loading ? 'Auditing...' : 'Re-verify Live State'}</span>
+              <span>{loading ? 'Loading...' : 'Refresh'}</span>
             </button>
             <button
               onClick={onClose}

@@ -31,6 +31,7 @@ import {
 } from 'recharts';
 import { api } from '../lib/api';
 import { useToast } from '../context/ToastContext';
+import { SimulatedBadge } from './SimulatedBadge';
 
 interface ModelCustomizationStudioProps {
   onNavigateToDeployments?: () => void;
@@ -138,6 +139,7 @@ export const ModelCustomizationStudio: React.FC<ModelCustomizationStudioProps> =
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-semibold text-white tracking-tight">Scale Model Customization Studio</h1>
+            <SimulatedBadge />
             <span className="text-[11px] font-mono text-indigo-400 bg-indigo-950/40 px-2.5 py-0.5 rounded border border-indigo-500/20">
               PEFT & DPO Engine
             </span>
@@ -243,7 +245,7 @@ export const ModelCustomizationStudio: React.FC<ModelCustomizationStudioProps> =
                         </span>
                       </td>
                       <td className="py-3 font-mono text-emerald-400 tabular-nums">
-                        {job.metrics?.evalAccuracy ? `${job.metrics.evalAccuracy}%` : '98.5%'}
+                        {job.metrics?.evalAccuracy ? `${job.metrics.evalAccuracy}%` : '—'}
                       </td>
                       <td className="py-3">
                         {job.status === 'completed' && (

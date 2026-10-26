@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Play, CheckCircle2, Loader2, Plus, TestTube2, Target, BarChart2, Download } from 'lucide-react';
 import { api } from '../lib/api';
 import { useToast } from '../context/ToastContext';
+import { SimulatedBadge } from './SimulatedBadge';
 
 interface EvaluationLabProps {
   evaluations: any;
@@ -97,7 +98,10 @@ export const EvaluationLab: React.FC<EvaluationLabProps> = ({ evaluations, onRef
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
         <div>
-          <h1 className="text-xl font-semibold text-white tracking-tight">Evaluation & Benchmark Lab</h1>
+          <h1 className="text-xl font-semibold text-white tracking-tight flex items-center gap-2">
+            Evaluation & Benchmark Lab
+            <SimulatedBadge label="Runs simulated · demo mode" />
+          </h1>
           <p className="text-xs text-slate-400 mt-1">
             Automated regression suites, schema validation rates, ground-truth accuracy, and latency benchmarks.
           </p>
@@ -228,9 +232,11 @@ export const EvaluationLab: React.FC<EvaluationLabProps> = ({ evaluations, onRef
                     <td className="py-3 text-slate-400 font-mono text-[11px]">
                       {c.groundTruthKeywords?.join(', ')}
                     </td>
-                    <td className="py-3 text-emerald-400 font-medium">Passed</td>
+                    <td className={`py-3 font-medium ${runResult?.passed ? 'text-emerald-400' : 'text-slate-400'}`}>
+                      {runResult ? (runResult.passed ? 'Passed' : 'Failed') : '—'}
+                    </td>
                     <td className="py-3 text-right font-mono text-emerald-400 font-semibold tabular-nums">
-                      {runResult?.score ? `${runResult.score * 100}%` : '100%'}
+                      {runResult ? `${runResult.score * 100}%` : '—'}
                     </td>
                   </tr>
                 );

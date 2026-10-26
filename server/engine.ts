@@ -106,6 +106,7 @@ export async function executeAgentDirectly(params: {
   modelUsed: string;
   tokensUsed: number;
   costUsd: number;
+  simulated?: boolean;
 }> {
   const state = db.getState();
   const agent = state.agents.find((a) => a.id === params.agentId);
@@ -191,11 +192,15 @@ ${params.context ? `Relevant Knowledge Context & Citations:\n${params.context}` 
         };
       }
     } catch (err: any) {
+      if (!state.settings.demoMode) throw err;
       console.warn('Gemini API call failed or rate limited, applying robust fallback harness:', err?.message);
     }
   }
 
-  // Deterministic enterprise simulation harness (for zero-latency offline / testing)
+  // Deterministic enterprise simulation harness: demo mode only, and every answer says simulated.
+  if (!state.settings.demoMode) {
+    throw new Error('No model provider answered, and simulated agent answers run only in demo mode.');
+  }
   const isInvoice = agent.id.includes('invoice') || JSON.stringify(params.userInput).includes('amount');
   const amount = params.userInput?.amount || 18450;
 
@@ -221,6 +226,7 @@ ${params.context ? `Relevant Knowledge Context & Citations:\n${params.context}` 
       modelUsed: 'gemini-4-argon (High Thinking)',
       tokensUsed: 1320,
       costUsd: 0.0039,
+      simulated: true,
     };
   }
 
@@ -240,7 +246,14 @@ ${params.context ? `Relevant Knowledge Context & Citations:\n${params.context}` 
     modelUsed: 'gemini-4-argon (High Thinking)',
     tokensUsed: 1100,
     costUsd: 0.0033,
+    simulated: true,
   };
+}
+
+// Steps that only pretend to act run in demo mode alone, and their output says simulated.
+function simulatedStep<T extends object>(what: string, output: T): T & { simulated: true } {
+  if (!db.getState().settings.demoMode) throw new Error(`${what} is simulated and runs only in demo mode.`);
+  return { ...output, simulated: true };
 }
 
 export async function runWorkflowExecution(executionId: string): Promise<ExecutionRecord> {
@@ -305,7 +318,6 @@ export async function runWorkflowExecution(executionId: string): Promise<Executi
           chunkId: c.id,
           section: c.section,
           text: c.text,
-          score: 0.96,
         })) || [];
 
         record.output = {
@@ -325,6 +337,7 @@ export async function runWorkflowExecution(executionId: string): Promise<Executi
         });
 
         record.output = agentResult.output;
+        record.simulated = agentResult.simulated;
         record.thinkingDetails = agentResult.thinkingTrace;
         record.tokensUsed = agentResult.tokensUsed;
         record.estimatedCostUsd = agentResult.costUsd;
@@ -411,26 +424,28 @@ export async function runWorkflowExecution(executionId: string): Promise<Executi
 
         return execution;
       } else if (node.type === 'tool') {
-        record.output = {
+        // No connector makes a network call yet, so every tool result is invented.
+        record.output = simulatedStep(`Tool node "${node.label}"`, {
           toolExecuted: node.config.toolId || 'custom_api_sap_erp',
           method: node.config.method || 'POST',
           status: 'SUCCESS_200_OK',
           externalId: `ERP-TX-${Math.floor(1000000 + Math.random() * 9000000)}`,
           committedAt: new Date().toISOString(),
-        };
+        });
         currentVariables.toolOutput = record.output;
         record.status = 'success';
       } else if (node.type === 'transform') {
-        record.output = {
+        record.output = simulatedStep(`Transform node "${node.label}"`, {
           transformed: true,
           outputSummary: 'Data normalized according to enterprise standard schema',
-        };
+        });
         record.status = 'success';
       } else if (node.type === 'end') {
         record.output = { finalOutput: currentVariables, completed: true };
         record.status = 'success';
       }
 
+      if (record.simulated || record.output?.simulated) execution.simulated = true;
       record.completedAt = new Date().toISOString();
       record.durationMs = Date.now() - startTime;
       execution.nodeExecutions.push(record);

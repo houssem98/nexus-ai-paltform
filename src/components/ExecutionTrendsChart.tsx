@@ -19,6 +19,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { api } from '../lib/api';
+import { SimulatedBadge } from './SimulatedBadge';
 
 export type TrendMetric = 'volume' | 'tokens' | 'cost' | 'latency';
 export type TimeRange = 7 | 14 | 30;
@@ -31,18 +32,19 @@ export interface DailyTrendPoint {
   failed: number;
   tokens: number;
   costUsd: number;
-  avgLatencyMs: number;
-  p95LatencyMs: number;
+  // null when the day has no execution with a recorded duration
+  avgLatencyMs: number | null;
+  p95LatencyMs: number | null;
 }
 
 export interface TrendsSummary {
   totalExecutions: number;
   totalCompleted: number;
   totalFailed: number;
-  successRate: number;
+  successRate: number | null;
   totalTokens: number;
   totalCostUsd: number;
-  avgLatencyMs: number;
+  avgLatencyMs: number | null;
   peakDay: {
     date: string;
     displayDate: string;
@@ -63,8 +65,9 @@ export const ExecutionTrendsChart: React.FC<ExecutionTrendsChartProps> = ({ agen
   const [summary, setSummary] = useState<TrendsSummary | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [simulated, setSimulated] = useState<boolean>(false);
 
-  // Fetch trend analytics from API
+  // Fetch trend analytics from API; on failure show no numbers rather than invented ones.
   const fetchTrends = async (showRefresh = false) => {
     if (showRefresh) setIsRefreshing(true);
     try {
@@ -72,69 +75,15 @@ export const ExecutionTrendsChart: React.FC<ExecutionTrendsChartProps> = ({ agen
       if (res && res.points) {
         setDataPoints(res.points);
         setSummary(res.summary);
+        setSimulated(!!res.simulated);
       }
     } catch {
-      // Fallback synthetic baseline generation if server is warming up
-      generateFallbackData(timeRange, selectedAgentId);
+      setDataPoints([]);
+      setSummary(null);
     } finally {
       setLoading(false);
       setIsRefreshing(false);
     }
-  };
-
-  const generateFallbackData = (days: number, agentId: string) => {
-    const points: DailyTrendPoint[] = [];
-    const now = new Date();
-    const weight = agentId === 'all' ? 1.0 : 0.35;
-
-    for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-      const factor = isWeekend ? 0.4 : 1.0;
-      const baseExecs = Math.round((30 + Math.sin(i * 0.6) * 15 + Math.random() * 8) * factor * weight);
-      const completed = Math.round(baseExecs * 0.96);
-      const failed = baseExecs - completed;
-      const tokens = baseExecs * Math.round(2400 + Math.random() * 600);
-      const costUsd = parseFloat((tokens * 0.0000021).toFixed(4));
-      const avgLatencyMs = Math.round(1350 + Math.sin(i * 0.4) * 200 + Math.random() * 80);
-
-      points.push({
-        date: d.toISOString().split('T')[0],
-        displayDate: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        executions: baseExecs,
-        completed,
-        failed,
-        tokens,
-        costUsd,
-        avgLatencyMs,
-        p95LatencyMs: Math.round(avgLatencyMs * 1.35),
-      });
-    }
-
-    const totalExecs = points.reduce((acc, p) => acc + p.executions, 0);
-    const totalCompleted = points.reduce((acc, p) => acc + p.completed, 0);
-    const totalFailed = points.reduce((acc, p) => acc + p.failed, 0);
-    const totalTokens = points.reduce((acc, p) => acc + p.tokens, 0);
-    const totalCostUsd = parseFloat(points.reduce((acc, p) => acc + p.costUsd, 0).toFixed(4));
-    const avgLatencyMs = Math.round(points.reduce((acc, p) => acc + p.avgLatencyMs, 0) / points.length);
-    const peakDay = points.reduce((max, p) => (p.executions > max.executions ? p : max), points[0]);
-
-    setDataPoints(points);
-    setSummary({
-      totalExecutions: totalExecs,
-      totalCompleted,
-      totalFailed,
-      successRate: totalExecs > 0 ? parseFloat(((totalCompleted / totalExecs) * 100).toFixed(1)) : 100,
-      totalTokens,
-      totalCostUsd,
-      avgLatencyMs,
-      peakDay: {
-        date: peakDay?.date || '',
-        displayDate: peakDay?.displayDate || '',
-        executions: peakDay?.executions || 0,
-      },
-    });
   };
 
   useEffect(() => {
@@ -157,7 +106,7 @@ export const ExecutionTrendsChart: React.FC<ExecutionTrendsChartProps> = ({ agen
           summaryLabel: 'Period Invocations',
           summaryValue: summary?.totalExecutions.toLocaleString() || '0',
           secondaryLabel: 'Success Rate',
-          secondaryValue: `${summary?.successRate ?? 99.4}%`,
+          secondaryValue: summary?.successRate != null ? `${summary.successRate}%` : '—',
         };
       case 'tokens':
         return {
@@ -179,7 +128,7 @@ export const ExecutionTrendsChart: React.FC<ExecutionTrendsChartProps> = ({ agen
           secondaryValue:
             summary && summary.totalExecutions > 0
               ? `${Math.round(summary.totalTokens / summary.totalExecutions).toLocaleString()} tok`
-              : '2,450 tok',
+              : '—',
         };
       case 'cost':
         return {
@@ -210,7 +159,7 @@ export const ExecutionTrendsChart: React.FC<ExecutionTrendsChartProps> = ({ agen
           unitLabel: 'ms',
           formatValue: (val: number) => `${Math.round(val)}ms`,
           summaryLabel: 'Average Response Time',
-          summaryValue: `${summary?.avgLatencyMs || 1280}ms`,
+          summaryValue: summary?.avgLatencyMs != null ? `${summary.avgLatencyMs}ms` : '—',
           secondaryLabel: 'Peak Day',
           secondaryValue: summary?.peakDay.displayDate || 'N/A',
         };
@@ -238,7 +187,14 @@ export const ExecutionTrendsChart: React.FC<ExecutionTrendsChartProps> = ({ agen
           <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
             <span>{currentAgentName}</span>
             <span aria-hidden="true">·</span>
-            <span>Deterministic multi-agent runtime telemetry</span>
+            {simulated ? (
+              <>
+                <SimulatedBadge />
+                <span>Generated volume blended with stored runs</span>
+              </>
+            ) : (
+              <span>Computed from stored executions</span>
+            )}
           </div>
         </div>
 
@@ -370,7 +326,7 @@ export const ExecutionTrendsChart: React.FC<ExecutionTrendsChartProps> = ({ agen
               <span>Latency</span>
             </div>
             <div className="text-base font-semibold font-mono tabular-nums text-white mt-1">
-              {summary ? `${summary.avgLatencyMs}ms` : '—'}
+              {summary?.avgLatencyMs != null ? `${summary.avgLatencyMs}ms` : '—'}
             </div>
           </div>
           <span className="text-[10px] text-slate-500 font-mono">avg</span>
@@ -451,7 +407,7 @@ export const ExecutionTrendsChart: React.FC<ExecutionTrendsChartProps> = ({ agen
                             <div className="flex items-center justify-between border-t border-white/[0.06] pt-1">
                               <span className="text-slate-400">Avg / P95 Latency:</span>
                               <span className="font-mono text-amber-300 tabular-nums">
-                                {data.avgLatencyMs}ms / {data.p95LatencyMs}ms
+                                {data.avgLatencyMs != null ? `${data.avgLatencyMs}ms / ${data.p95LatencyMs}ms` : '—'}
                               </span>
                             </div>
                           </div>
