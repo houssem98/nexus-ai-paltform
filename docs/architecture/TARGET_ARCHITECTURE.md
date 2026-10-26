@@ -29,13 +29,15 @@ Changes: `server/auth.ts`, `server.ts#app.post('/api/v1/auth/switch-context'`, `
 
 ### D2 · Tenancy enforced in one place
 
-**Now.** Each handler filters by org by hand, and 35 of the 62 routes L0 audited get it wrong (`docs/audit/CAPABILITY_MATRIX.md`). Some lists skip the filter (`server.ts#res.json({ integrations: state.integrations });`), integrations have no org field (`server/storage.ts#export interface ToolIntegration {`), settings and guardrails are one object for every org, and the engine looks records up by id alone (`server/engine.ts#const agent = state.agents.find((a) => a.id === params.agentId);`, `server/engine.ts#state.knowledge[0];`).
+**Now.** Built in L1 T4, without the module: each handler and the engine filter by the caller's org by hand, settings and guardrails are one record per org, integrations carry an org, and `server/tenancy.test.ts` proves every route against a second org. Before L1 T4, 35 of the 62 routes L0 audited got it wrong (`docs/audit/CAPABILITY_MATRIX.md`). Some lists skip the filter (`server.ts#res.json({ integrations: state.integrations.filter((i) => i.orgId === res.locals.orgId) });`), integrations have no org field (`server/storage.ts#export interface ToolIntegration {`), settings and guardrails are one object for every org, and the engine looks records up by id alone (`server/engine.ts#const agent = state.agents.find((a) => a.id === params.agentId && a.orgId === params.orgId);`, `server/engine.ts#docs[0];`).
 
 **Decision.** `server/tenancy.ts` (new) is the only code that touches tenant collections. It takes the request context from D1 and offers list, get, insert, update and remove per collection: reads filter by `orgId`, a get for another org's id answers 404 exactly like a missing id, inserts stamp `orgId` and `workspaceId` from the context and never from the body, and duplicates take the caller's org. The org is the hard boundary; which workspaces a role may see inside its org is a rule in the L1 T5 permission table, applied in the same module. Integrations gain `orgId`; settings and guardrails become one record per org. The engine receives the execution's org and resolves agents and knowledge through the same module, so a workflow cannot reach another org's agent. Enforcement is mechanical as well as tested: a test fails when `server.ts` or `server/engine.ts` reads a tenant collection from the store directly.
 
+L1 T4 did not create the tenancy module this decision names, nor the mechanical check: the filters went into the handlers, the smaller change, and the route-by-route tests are the guard. A handler added later without a filter is caught only if its route gets a cross-tenant test, which the coverage table forces.
+
 **Proved by.** L1 T1's coverage table with no pending rows, and L1 T4's cross-tenant read, write, execute, duplicate and export tests.
 
-Changes: `server/tenancy.ts` (new), `server.ts#const agents = state.agents.filter((a) => a.orgId === res.locals.orgId);`, `server/engine.ts#const agent = state.agents.find((a) => a.id === params.agentId);`, `server/storage.ts#export interface ToolIntegration {`
+Changes: `server/tenancy.ts` (new), `server.ts#const agents = state.agents.filter((a) => a.orgId === res.locals.orgId);`, `server/engine.ts#const agent = state.agents.find((a) => a.id === params.agentId && a.orgId === params.orgId);`, `server/storage.ts#export interface ToolIntegration {`
 
 ### D3 · Store
 

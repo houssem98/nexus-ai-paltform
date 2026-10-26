@@ -14,8 +14,10 @@ delete process.env.GEMINI_API_KEY;
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexus-storage-'));
 process.chdir(dir);
 const storeFile = path.join(dir, 'data', 'nexus-store.json');
-const { db } = await import('./storage');
+const { db, settingsOf } = await import('./storage');
 const { app } = await import('../server');
+// Settings are per org since L1 T4; the session below is the seed org's admin.
+const seedSettings = () => settingsOf(db.getState(), 'org_nexus_enterprises');
 const { createSession, SESSION_COOKIE } = await import('./auth');
 
 const server = app.listen(0);
@@ -38,12 +40,12 @@ test('a simulated crash mid-write leaves the previous state readable', () => {
     throw new Error('simulated crash');
   });
   try {
-    assert.throws(() => db.mutate((s) => { s.settings.dataRetentionDays = 7; }), /simulated crash/);
+    assert.throws(() => db.mutate((s) => { settingsOf(s, 'org_nexus_enterprises').dataRetentionDays = 7; }), /simulated crash/);
   } finally {
     crash.mock.restore();
   }
   assert.equal(fs.readFileSync(storeFile, 'utf-8'), before);
-  assert.notEqual(db.getState().settings.dataRetentionDays, 7, 'memory keeps no change the disk refused');
+  assert.notEqual(seedSettings().dataRetentionDays, 7, 'memory keeps no change the disk refused');
 });
 
 test('a corrupt store makes boot fail without modifying the file', () => {
@@ -58,7 +60,7 @@ test('a corrupt store makes boot fail without modifying the file', () => {
 });
 
 test('a write error returns 5xx', async () => {
-  const before = db.getState().settings.dataRetentionDays;
+  const before = seedSettings().dataRetentionDays;
   const full = mock.method(fs, 'writeFileSync', () => {
     throw Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' });
   });
@@ -74,5 +76,5 @@ test('a write error returns 5xx', async () => {
     full.mock.restore();
   }
   assert.ok(status >= 500, `got ${status}`);
-  assert.equal(db.getState().settings.dataRetentionDays, before);
+  assert.equal(seedSettings().dataRetentionDays, before);
 });

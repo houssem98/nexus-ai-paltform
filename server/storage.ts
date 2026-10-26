@@ -156,6 +156,8 @@ export interface KnowledgeDocument {
 
 export interface ToolIntegration {
   id: string;
+  orgId: string;
+  workspaceId: string;
   name: string;
   category: 'api' | 'communication' | 'crm' | 'database' | 'finance' | 'security' | 'mcp';
   description: string;
@@ -369,13 +371,16 @@ export interface PlatformState {
   fineTuningJobs: FineTuningJob[];
   syntheticDatasets: SyntheticDataset[];
   redTeamingRuns: RedTeamingRun[];
-  guardrails: GuardrailsPolicy;
-  settings: {
-    demoMode: boolean;
-    allowedModels: string[];
-    requireHumanApprovalForDeploy: boolean;
-    dataRetentionDays: number;
-  };
+  // One record per org, keyed by org id; read them through guardrailsOf and settingsOf.
+  guardrails: Record<string, GuardrailsPolicy>;
+  settings: Record<string, OrgSettings>;
+}
+
+export interface OrgSettings {
+  demoMode: boolean;
+  allowedModels: string[];
+  requireHumanApprovalForDeploy: boolean;
+  dataRetentionDays: number;
 }
 
 // Active while a simulated (demo-only) route runs, so every audit record it writes is flagged.
@@ -935,6 +940,8 @@ When a security alert reports an anomalous egress connection or credential stuff
     integrations: [
       {
         id: 'custom_api_sap_erp',
+        orgId,
+        workspaceId: wsOps,
         name: 'SAP S/4HANA & NetSuite Cloud ERP',
         category: 'finance',
         description: 'Secure enterprise REST adapter for general ledger commits, accounts payable, and purchase order status queries.',
@@ -948,6 +955,8 @@ When a security alert reports an anomalous egress connection or credential stuff
       },
       {
         id: 'threat_intel_virustotal',
+        orgId,
+        workspaceId: wsOps,
         name: 'Threat Intelligence Feeds (VirusTotal & OTX)',
         category: 'security',
         description: 'Reputation analysis for IPs, domains, and suspicious binary checksums.',
@@ -961,6 +970,8 @@ When a security alert reports an anomalous egress connection or credential stuff
       },
       {
         id: 'firewall_manager',
+        orgId,
+        workspaceId: wsOps,
         name: 'Palo Alto Panorama Egress Firewall Connector',
         category: 'security',
         description: 'Automated IP containment and dynamic network blocklist synchronization.',
@@ -974,6 +985,8 @@ When a security alert reports an anomalous egress connection or credential stuff
       },
       {
         id: 'crm_salesforce',
+        orgId,
+        workspaceId: wsOps,
         name: 'Salesforce Enterprise CRM',
         category: 'crm',
         description: 'Account history, opportunity stage mutation, and lead enrichment.',
@@ -1375,6 +1388,7 @@ When a security alert reports an anomalous egress connection or credential stuff
       },
     ],
     guardrails: {
+      [orgId]: {
       piiMasking: true,
       jailbreakSensitivity: 0.94,
       blockCbrnHazards: true,
@@ -1387,8 +1401,10 @@ When a security alert reports an anomalous egress connection or credential stuff
         'exfiltrate private key',
         'cbrn synthesis instructions',
       ],
+      },
     },
     settings: {
+      [orgId]: {
       demoMode: true,
       allowedModels: [
         'gemini-4-argon',
@@ -1399,6 +1415,7 @@ When a security alert reports an anomalous egress connection or credential stuff
       ],
       requireHumanApprovalForDeploy: true,
       dataRetentionDays: 90,
+      },
     },
   };
 }
@@ -1430,6 +1447,14 @@ class StorageManager {
     if (!parsed.syntheticDatasets) parsed.syntheticDatasets = seed.syntheticDatasets;
     if (!parsed.redTeamingRuns) parsed.redTeamingRuns = seed.redTeamingRuns;
     if (!parsed.guardrails) parsed.guardrails = seed.guardrails;
+    // Before L1 T4, settings and guardrails were one object for every org, and integrations had no org.
+    const first = parsed.organizations[0]?.id;
+    if ('demoMode' in parsed.settings) parsed.settings = Object.fromEntries(parsed.organizations.map((o: Organization) => [o.id, structuredClone(parsed.settings)]));
+    if ('piiMasking' in parsed.guardrails) parsed.guardrails = Object.fromEntries(parsed.organizations.map((o: Organization) => [o.id, structuredClone(parsed.guardrails)]));
+    for (const i of parsed.integrations) {
+      i.orgId ??= first;
+      i.workspaceId ??= parsed.workspaces.find((w: Workspace) => w.orgId === first)?.id;
+    }
     return parsed;
   }
 
@@ -1474,3 +1499,37 @@ class StorageManager {
 }
 
 export const db = new StorageManager();
+
+// An org without its own settings or guardrails starts from the seed org's, with demo mode off.
+export function settingsOf(state: PlatformState, orgId: string): OrgSettings {
+  return (state.settings[orgId] ??= { ...structuredClone(Object.values(getInitialSeedData().settings)[0]), demoMode: false });
+}
+
+export function guardrailsOf(state: PlatformState, orgId: string): GuardrailsPolicy {
+  return (state.guardrails[orgId] ??= structuredClone(Object.values(getInitialSeedData().guardrails)[0]));
+}
+
+// One org's records, for handlers that summarize many collections at once.
+export function orgView(state: PlatformState, orgId: string): PlatformState {
+  const own = <T extends { orgId: string }>(xs: T[]) => xs.filter((x) => x.orgId === orgId);
+  return {
+    ...state,
+    organizations: state.organizations.filter((o) => o.id === orgId),
+    workspaces: own(state.workspaces),
+    users: own(state.users),
+    agents: own(state.agents),
+    workflows: own(state.workflows),
+    executions: own(state.executions),
+    knowledge: own(state.knowledge),
+    integrations: own(state.integrations),
+    evaluations: { datasets: own(state.evaluations.datasets), runs: own(state.evaluations.runs) },
+    deployments: own(state.deployments),
+    auditLogs: own(state.auditLogs),
+    approvals: own(state.approvals),
+    fineTuningJobs: own(state.fineTuningJobs),
+    syntheticDatasets: own(state.syntheticDatasets),
+    redTeamingRuns: own(state.redTeamingRuns),
+    guardrails: { [orgId]: guardrailsOf(state, orgId) },
+    settings: { [orgId]: settingsOf(state, orgId) },
+  };
+}

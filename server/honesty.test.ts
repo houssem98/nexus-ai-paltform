@@ -13,7 +13,7 @@ process.env.NODE_ENV = 'test';
 delete process.env.GEMINI_API_KEY;
 process.chdir(fs.mkdtempSync(path.join(os.tmpdir(), 'nexus-honesty-')));
 const { app } = await import('../server');
-const { db } = await import('./storage');
+const { db, settingsOf } = await import('./storage');
 const { executeAgentDirectly } = await import('./engine');
 const { createSession, SESSION_COOKIE } = await import('./auth');
 // Signed in as the seed org admin; sign-in itself is tested in tenancy.test.ts.
@@ -32,7 +32,8 @@ async function call(method: string, url: string, body?: unknown) {
   });
   return { status: res.status, body: await res.json().catch(() => null) };
 }
-const demo = (on: boolean) => db.mutate((s) => { s.settings.demoMode = on; });
+// The seed org's demo mode; demo mode is per org since L1 T4.
+const demo = (on: boolean) => db.mutate((s) => { settingsOf(s, 'org_nexus_enterprises').demoMode = on; });
 const read = (rel: string) => fs.readFileSync(new URL(rel, import.meta.url), 'utf-8');
 
 // A simulated route refuses outside demo mode and writes nothing; in demo mode it says simulated,
@@ -153,7 +154,7 @@ test('analytics outside demo mode are computed from stored executions only', asy
 });
 
 test('agent answers without a provider are simulated in demo mode and refused outside it', async () => {
-  const params = { agentId: 'agent_invoice_auditor', userInput: { amount: 100 } };
+  const params = { orgId: 'org_nexus_enterprises', agentId: 'agent_invoice_auditor', userInput: { amount: 100 } };
   demo(true);
   assert.equal((await executeAgentDirectly(params)).simulated, true);
   demo(false);
@@ -239,7 +240,7 @@ test('connector tests do not mark a connector connected, and new connectors star
 test('demo mode accepts only a boolean', async () => {
   demo(true);
   assert.equal((await call('PATCH', '/api/v1/settings', { demoMode: 'false' })).status, 400);
-  assert.equal(db.getState().settings.demoMode, true);
+  assert.equal(settingsOf(db.getState(), 'org_nexus_enterprises').demoMode, true);
 });
 
 test('/api/v1/me reports demo mode, so the header can say so', async () => {

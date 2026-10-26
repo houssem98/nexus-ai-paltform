@@ -1,5 +1,5 @@
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
-import { db, Workflow, WorkflowNode, WorkflowEdge, ExecutionRecord, NodeExecutionRecord } from './storage';
+import { db, settingsOf, Workflow, WorkflowNode, WorkflowEdge, ExecutionRecord, NodeExecutionRecord } from './storage';
 
 // Initialize Gemini client on server with required User-Agent
 const ai = process.env.GEMINI_API_KEY
@@ -96,6 +96,7 @@ export function validateGraph(nodes: WorkflowNode[], edges: WorkflowEdge[]): Gra
 }
 
 export async function executeAgentDirectly(params: {
+  orgId: string;
   agentId: string;
   userInput: any;
   context?: string;
@@ -109,7 +110,7 @@ export async function executeAgentDirectly(params: {
   simulated?: boolean;
 }> {
   const state = db.getState();
-  const agent = state.agents.find((a) => a.id === params.agentId);
+  const agent = state.agents.find((a) => a.id === params.agentId && a.orgId === params.orgId);
   if (!agent) {
     throw new Error(`Agent ${params.agentId} not found`);
   }
@@ -192,13 +193,13 @@ ${params.context ? `Relevant Knowledge Context & Citations:\n${params.context}` 
         };
       }
     } catch (err: any) {
-      if (!state.settings.demoMode) throw err;
+      if (!settingsOf(state, params.orgId).demoMode) throw err;
       console.warn('Gemini API call failed or rate limited, applying robust fallback harness:', err?.message);
     }
   }
 
   // Deterministic enterprise simulation harness: demo mode only, and every answer says simulated.
-  if (!state.settings.demoMode) {
+  if (!settingsOf(state, params.orgId).demoMode) {
     throw new Error('No model provider answered, and simulated agent answers run only in demo mode.');
   }
   const isInvoice = agent.id.includes('invoice') || JSON.stringify(params.userInput).includes('amount');
@@ -251,8 +252,8 @@ ${params.context ? `Relevant Knowledge Context & Citations:\n${params.context}` 
 }
 
 // Steps that only pretend to act run in demo mode alone, and their output says simulated.
-function simulatedStep<T extends object>(what: string, output: T): T & { simulated: true } {
-  if (!db.getState().settings.demoMode) throw new Error(`${what} is simulated and runs only in demo mode.`);
+function simulatedStep<T extends object>(orgId: string, what: string, output: T): T & { simulated: true } {
+  if (!settingsOf(db.getState(), orgId).demoMode) throw new Error(`${what} is simulated and runs only in demo mode.`);
   return { ...output, simulated: true };
 }
 
@@ -263,7 +264,7 @@ export async function runWorkflowExecution(executionId: string): Promise<Executi
     throw new Error(`Execution ${executionId} not found`);
   }
 
-  const workflow = state.workflows.find((w) => w.id === execution.workflowId);
+  const workflow = state.workflows.find((w) => w.id === execution.workflowId && w.orgId === execution.orgId);
   if (!workflow) {
     throw new Error(`Workflow ${execution.workflowId} not found`);
   }
@@ -313,7 +314,8 @@ export async function runWorkflowExecution(executionId: string): Promise<Executi
       } else if (node.type === 'knowledge') {
         // Search knowledge
         const query = node.config.query || 'procurement policies';
-        const doc = state.knowledge.find((k) => k.id === node.config.collectionId) || state.knowledge[0];
+        const docs = state.knowledge.filter((k) => k.orgId === execution.orgId);
+        const doc = docs.find((k) => k.id === node.config.collectionId) || docs[0];
         const matches = doc?.chunks.map((c) => ({
           chunkId: c.id,
           section: c.section,
@@ -330,6 +332,7 @@ export async function runWorkflowExecution(executionId: string): Promise<Executi
       } else if (node.type === 'agent') {
         const agentId = node.config.agentId;
         const agentResult = await executeAgentDirectly({
+          orgId: execution.orgId,
           agentId,
           userInput: currentVariables,
           context: currentVariables.knowledgeContext,
@@ -425,7 +428,7 @@ export async function runWorkflowExecution(executionId: string): Promise<Executi
         return execution;
       } else if (node.type === 'tool') {
         // No connector makes a network call yet, so every tool result is invented.
-        record.output = simulatedStep(`Tool node "${node.label}"`, {
+        record.output = simulatedStep(execution.orgId, `Tool node "${node.label}"`, {
           toolExecuted: node.config.toolId || 'custom_api_sap_erp',
           method: node.config.method || 'POST',
           status: 'SUCCESS_200_OK',
@@ -435,7 +438,7 @@ export async function runWorkflowExecution(executionId: string): Promise<Executi
         currentVariables.toolOutput = record.output;
         record.status = 'success';
       } else if (node.type === 'transform') {
-        record.output = simulatedStep(`Transform node "${node.label}"`, {
+        record.output = simulatedStep(execution.orgId, `Transform node "${node.label}"`, {
           transformed: true,
           outputSummary: 'Data normalized according to enterprise standard schema',
         });
@@ -481,7 +484,8 @@ export async function runWorkflowExecution(executionId: string): Promise<Executi
 
   if (execution.status === 'running') {
     execution.status = 'completed';
-    execution.output = currentVariables;
+    const { knowledgeContext, ...output } = currentVariables;
+    execution.output = output;
     execution.completedAt = new Date().toISOString();
     execution.durationMs = execution.nodeExecutions.reduce((acc, n) => acc + (n.durationMs || 0), 0);
     execution.totalTokens = totalTokens;

@@ -2,7 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { db, simulatedScope, type User } from './server/storage';
+import { db, simulatedScope, settingsOf, guardrailsOf, orgView, type User } from './server/storage';
 import { validateGraph, runWorkflowExecution, executeAgentDirectly } from './server/engine';
 import { bootstrapAdmin, createSession, endSession, publicUser, readSession, sessionCookie, verifyPassword } from './server/auth';
 
@@ -34,7 +34,7 @@ app.use('/api', (req: Request, res: Response, next: NextFunction) => {
 // Simulated features answer only in demo mode, their responses say simulated: true,
 // and every audit record they write is flagged simulated.
 const demoOnly = (req: Request, res: Response, next: NextFunction) => {
-  if (db.getState().settings.demoMode) return simulatedScope.run(true, next);
+  if (settingsOf(db.getState(), res.locals.orgId).demoMode) return simulatedScope.run(true, next);
   res.status(501).json({ error: 'This feature is simulated and runs only in demo mode.' });
 };
 
@@ -76,7 +76,7 @@ app.get('/api/v1/me', (req: Request, res: Response) => {
     workspace: state.workspaces.find((w) => w.id === res.locals.workspaceId),
     availableWorkspaces: state.workspaces.filter((w) => w.orgId === user.orgId),
     availableUsers: state.users.filter((u) => u.orgId === user.orgId).map(publicUser),
-    demoMode: state.settings.demoMode,
+    demoMode: settingsOf(state, user.orgId).demoMode,
   });
 });
 
@@ -217,8 +217,12 @@ app.put('/api/v1/agents/:id', (req: Request, res: Response) => {
 
 app.post('/api/v1/agents/:id/test', async (req: Request, res: Response) => {
   const { userInput, useHighThinking } = req.body;
+  if (!db.getState().agents.some((a) => a.id === req.params.id && a.orgId === res.locals.orgId)) {
+    return res.status(404).json({ error: 'Agent not found' });
+  }
   try {
     const result = await executeAgentDirectly({
+      orgId: res.locals.orgId,
       agentId: req.params.id,
       userInput: userInput || 'Perform test verification',
       useHighThinking: useHighThinking ?? true,
@@ -392,7 +396,7 @@ app.get('/api/v1/analytics/trends', (req: Request, res: Response) => {
 
   const agentWeight = agentId === 'all' ? 1.0 : 0.32;
   // Demo mode blends generated volume into real counts and says so; otherwise every number comes from stored executions.
-  const simulated = state.settings.demoMode;
+  const simulated = settingsOf(state, res.locals.orgId).demoMode;
   const durationsInRange: number[] = [];
   const mean = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null);
   const p95 = (xs: number[]) => (xs.length ? [...xs].sort((a, b) => a - b)[Math.ceil(0.95 * xs.length) - 1] : null);
@@ -513,7 +517,7 @@ app.get('/api/v1/executions/:id', (req: Request, res: Response) => {
 app.post('/api/v1/executions/:id/approve', async (req: Request, res: Response) => {
   const { decision, notes } = req.body;
   const execution = db.mutate((state) => {
-    const exec = state.executions.find((e) => e.id === req.params.id);
+    const exec = state.executions.find((e) => e.id === req.params.id && e.orgId === res.locals.orgId);
     if (!exec) return null;
 
     const approval = state.approvals.find((a) => a.executionId === exec.id && a.status === 'pending');
@@ -561,7 +565,7 @@ app.post('/api/v1/executions/:id/approve', async (req: Request, res: Response) =
 
 app.post('/api/v1/executions/:id/cancel', (req: Request, res: Response) => {
   const execution = db.mutate((state) => {
-    const exec = state.executions.find((e) => e.id === req.params.id);
+    const exec = state.executions.find((e) => e.id === req.params.id && e.orgId === res.locals.orgId);
     if (!exec) return null;
     if (exec.status === 'completed' || exec.status === 'failed') return exec;
 
@@ -652,7 +656,7 @@ app.post('/api/v1/knowledge/search', (req: Request, res: Response) => {
   const qLower = (query || '').toLowerCase();
 
   const results: any[] = [];
-  for (const doc of state.knowledge) {
+  for (const doc of state.knowledge.filter((k) => k.orgId === res.locals.orgId)) {
     for (const chunk of doc.chunks) {
       if (chunk.text.toLowerCase().includes(qLower) || doc.title.toLowerCase().includes(qLower)) {
         results.push({
@@ -673,7 +677,7 @@ app.post('/api/v1/knowledge/search', (req: Request, res: Response) => {
 
 app.delete('/api/v1/knowledge/:id', (req: Request, res: Response) => {
   const deleted = db.mutate((state) => {
-    const idx = state.knowledge.findIndex((k) => k.id === req.params.id);
+    const idx = state.knowledge.findIndex((k) => k.id === req.params.id && k.orgId === res.locals.orgId);
     if (idx === -1) return null;
     const [removed] = state.knowledge.splice(idx, 1);
     return removed;
@@ -698,7 +702,7 @@ app.delete('/api/v1/knowledge/:id', (req: Request, res: Response) => {
 
 app.post('/api/v1/knowledge/:id/reindex', (req: Request, res: Response) => {
   const doc = db.mutate((state) => {
-    const d = state.knowledge.find((k) => k.id === req.params.id);
+    const d = state.knowledge.find((k) => k.id === req.params.id && k.orgId === res.locals.orgId);
     if (!d) return null;
     d.updatedAt = new Date().toISOString();
     return d;
@@ -724,12 +728,12 @@ app.post('/api/v1/knowledge/:id/reindex', (req: Request, res: Response) => {
 // ==================== INTEGRATIONS ====================
 app.get('/api/v1/integrations', (req: Request, res: Response) => {
   const state = db.getState();
-  res.json({ integrations: state.integrations });
+  res.json({ integrations: state.integrations.filter((i) => i.orgId === res.locals.orgId) });
 });
 
 app.post('/api/v1/integrations/:id/test', demoOnly, (req: Request, res: Response) => {
   const state = db.getState();
-  const integration = state.integrations.find((i) => i.id === req.params.id);
+  const integration = state.integrations.find((i) => i.id === req.params.id && i.orgId === res.locals.orgId);
   if (!integration) return res.status(404).json({ error: 'Integration not found' });
 
   db.logAudit({
@@ -759,6 +763,8 @@ app.post('/api/v1/integrations', (req: Request, res: Response) => {
     const id = `int_${Date.now()}`;
     const item = {
       id,
+      orgId: res.locals.orgId,
+      workspaceId: res.locals.workspaceId,
       name: name || 'Custom Enterprise Connector',
       category: category || 'api',
       description: description || 'Custom REST/MCP integration endpoint',
@@ -791,7 +797,7 @@ app.post('/api/v1/integrations', (req: Request, res: Response) => {
 
 app.delete('/api/v1/integrations/:id', (req: Request, res: Response) => {
   const deleted = db.mutate((state) => {
-    const idx = state.integrations.findIndex((i) => i.id === req.params.id);
+    const idx = state.integrations.findIndex((i) => i.id === req.params.id && i.orgId === res.locals.orgId);
     if (idx === -1) return null;
     const [removed] = state.integrations.splice(idx, 1);
     return removed;
@@ -818,8 +824,9 @@ app.delete('/api/v1/integrations/:id', (req: Request, res: Response) => {
 app.get('/api/v1/evaluations', (req: Request, res: Response) => {
   const state = db.getState();
   // Simulated runs are shown only in demo mode.
-  const runs = state.evaluations.runs.filter((r) => state.settings.demoMode || !r.simulated);
-  res.json({ evaluations: { ...state.evaluations, runs } });
+  const demo = settingsOf(state, res.locals.orgId).demoMode;
+  const runs = state.evaluations.runs.filter((r) => r.orgId === res.locals.orgId && (demo || !r.simulated));
+  res.json({ evaluations: { datasets: state.evaluations.datasets.filter((d) => d.orgId === res.locals.orgId), runs } });
 });
 
 app.post('/api/v1/evaluations/datasets', (req: Request, res: Response) => {
@@ -870,7 +877,9 @@ app.post('/api/v1/evaluations/datasets', (req: Request, res: Response) => {
 app.post('/api/v1/evaluations/runs', demoOnly, async (req: Request, res: Response) => {
   const { datasetId, targetType, targetId } = req.body;
   const state = db.getState();
-  const dataset = state.evaluations.datasets.find((d) => d.id === datasetId) || state.evaluations.datasets[0];
+  const datasets = state.evaluations.datasets.filter((d) => d.orgId === res.locals.orgId);
+  const dataset = datasets.find((d) => d.id === datasetId) || datasets[0];
+  if (!dataset) return res.status(404).json({ error: 'Dataset not found' });
 
   const results = dataset.cases.map((c, i) => ({
     caseId: c.id,
@@ -928,7 +937,8 @@ app.post('/api/v1/evaluations/runs', demoOnly, async (req: Request, res: Respons
 app.get('/api/v1/deployments', (req: Request, res: Response) => {
   const state = db.getState();
   // Deployments made by simulated features are shown only in demo mode.
-  res.json({ deployments: state.deployments.filter((d) => state.settings.demoMode || !d.simulated) });
+  const demo = settingsOf(state, res.locals.orgId).demoMode;
+  res.json({ deployments: state.deployments.filter((d) => d.orgId === res.locals.orgId && (demo || !d.simulated)) });
 });
 
 // Authenticated deployment execution endpoint
@@ -940,7 +950,7 @@ app.post('/api/v1/deployments/:id/execute', async (req: Request, res: Response) 
   if (!deployment) {
     return res.status(404).json({ error: 'Deployment not found' });
   }
-  if (deployment.simulated && !state.settings.demoMode) {
+  if (deployment.simulated && !settingsOf(state, deployment.orgId).demoMode) {
     return res.status(501).json({ error: 'This deployment was made by a simulated feature and runs only in demo mode.' });
   }
 
@@ -985,7 +995,8 @@ app.post('/api/v1/deployments/:id/execute', async (req: Request, res: Response) 
 app.post('/api/v1/deployments', (req: Request, res: Response) => {
   const { workflowId, name, environment, rateLimitPerMinute } = req.body;
   const state = db.getState();
-  const workflow = state.workflows.find((w) => w.id === workflowId) || state.workflows[0];
+  const workflows = state.workflows.filter((w) => w.orgId === res.locals.orgId);
+  const workflow = workflows.find((w) => w.id === workflowId) || workflows[0];
 
   if (!workflow) {
     return res.status(404).json({ error: 'Workflow not found' });
@@ -1034,7 +1045,7 @@ app.post('/api/v1/deployments', (req: Request, res: Response) => {
 app.patch('/api/v1/deployments/:id/status', (req: Request, res: Response) => {
   const { status } = req.body;
   const deployment = db.mutate((s) => {
-    const dep = s.deployments.find((d) => d.id === req.params.id);
+    const dep = s.deployments.find((d) => d.id === req.params.id && d.orgId === res.locals.orgId);
     if (!dep) return null;
     dep.status = status;
     return dep;
@@ -1059,7 +1070,7 @@ app.patch('/api/v1/deployments/:id/status', (req: Request, res: Response) => {
 
 app.delete('/api/v1/deployments/:id', (req: Request, res: Response) => {
   const deleted = db.mutate((s) => {
-    const idx = s.deployments.findIndex((d) => d.id === req.params.id);
+    const idx = s.deployments.findIndex((d) => d.id === req.params.id && d.orgId === res.locals.orgId);
     if (idx === -1) return null;
     const [removed] = s.deployments.splice(idx, 1);
     return removed;
@@ -1086,7 +1097,8 @@ app.delete('/api/v1/deployments/:id', (req: Request, res: Response) => {
 // Simulated audit records are shown only in demo mode and never exported.
 app.get('/api/v1/audit-events', (req: Request, res: Response) => {
   const state = db.getState();
-  const visible = state.auditLogs.filter((l) => state.settings.demoMode || !l.simulated);
+  const demo = settingsOf(state, res.locals.orgId).demoMode;
+  const visible = state.auditLogs.filter((l) => l.orgId === res.locals.orgId && (demo || !l.simulated));
   res.json({ auditLogs: visible.slice(0, 50) });
 });
 
@@ -1203,19 +1215,19 @@ app.post('/api/v1/audit-events/simulate', demoOnly, (req: Request, res: Response
     ipAddress: (req.ip as string) || '10.240.4.18',
   });
 
-  res.status(201).json({ auditLog: newLog, auditLogs: db.getState().auditLogs.slice(0, 50), simulated: true });
+  res.status(201).json({ auditLog: newLog, auditLogs: db.getState().auditLogs.filter((l) => l.orgId === res.locals.orgId).slice(0, 50), simulated: true });
 });
 
 app.get('/api/v1/approvals', (req: Request, res: Response) => {
   const state = db.getState();
-  res.json({ approvals: state.approvals });
+  res.json({ approvals: state.approvals.filter((a) => a.orgId === res.locals.orgId) });
 });
 
 // Audit log export endpoint (CSV or JSON)
 app.get('/api/v1/audit-events/export', (req: Request, res: Response) => {
   const { format } = req.query;
   const state = db.getState();
-  const logs = state.auditLogs.filter((l) => !l.simulated);
+  const logs = state.auditLogs.filter((l) => l.orgId === res.locals.orgId && !l.simulated);
 
   if (format === 'csv') {
     const headers = ['id', 'timestamp', 'action', 'resourceType', 'resourceId', 'userId', 'userEmail', 'ipAddress', 'details'];
@@ -1247,7 +1259,7 @@ app.get('/api/v1/audit-events/export', (req: Request, res: Response) => {
 // Governance platform settings endpoint
 app.get('/api/v1/settings', (req: Request, res: Response) => {
   const state = db.getState();
-  res.json({ settings: state.settings });
+  res.json({ settings: settingsOf(state, res.locals.orgId) });
 });
 
 app.patch('/api/v1/settings', (req: Request, res: Response) => {
@@ -1257,11 +1269,12 @@ app.patch('/api/v1/settings', (req: Request, res: Response) => {
     return res.status(400).json({ error: 'demoMode must be true or false.' });
   }
   const updated = db.mutate((state) => {
-    if (allowedModels !== undefined) state.settings.allowedModels = allowedModels;
-    if (requireHumanApprovalForDeploy !== undefined) state.settings.requireHumanApprovalForDeploy = requireHumanApprovalForDeploy;
-    if (dataRetentionDays !== undefined) state.settings.dataRetentionDays = Number(dataRetentionDays);
-    if (demoMode !== undefined) state.settings.demoMode = demoMode;
-    return state.settings;
+    const settings = settingsOf(state, res.locals.orgId);
+    if (allowedModels !== undefined) settings.allowedModels = allowedModels;
+    if (requireHumanApprovalForDeploy !== undefined) settings.requireHumanApprovalForDeploy = requireHumanApprovalForDeploy;
+    if (dataRetentionDays !== undefined) settings.dataRetentionDays = Number(dataRetentionDays);
+    if (demoMode !== undefined) settings.demoMode = demoMode;
+    return settings;
   });
 
   db.logAudit({
@@ -1333,7 +1346,7 @@ const MODEL_CATALOG = [
 app.get('/api/v1/fine-tuning', demoOnly, (req: Request, res: Response) => {
   const state = db.getState();
   res.json({
-    jobs: state.fineTuningJobs,
+    jobs: state.fineTuningJobs.filter((j) => j.orgId === res.locals.orgId),
     catalog: MODEL_CATALOG,
     simulated: true,
   });
@@ -1400,7 +1413,7 @@ app.post('/api/v1/fine-tuning', demoOnly, (req: Request, res: Response) => {
 
 app.post('/api/v1/fine-tuning/:id/deploy', demoOnly, (req: Request, res: Response) => {
   const state = db.getState();
-  const job = state.fineTuningJobs.find((j) => j.id === req.params.id);
+  const job = state.fineTuningJobs.find((j) => j.id === req.params.id && j.orgId === res.locals.orgId);
   if (!job) return res.status(404).json({ error: 'Job not found' });
 
   const depId = `dep_ft_${Date.now()}`;
@@ -1444,7 +1457,7 @@ app.post('/api/v1/fine-tuning/:id/deploy', demoOnly, (req: Request, res: Respons
 
 app.delete('/api/v1/fine-tuning/:id', demoOnly, (req: Request, res: Response) => {
   const deleted = db.mutate((state) => {
-    const idx = state.fineTuningJobs.findIndex((j) => j.id === req.params.id);
+    const idx = state.fineTuningJobs.findIndex((j) => j.id === req.params.id && j.orgId === res.locals.orgId);
     if (idx === -1) return null;
     const [removed] = state.fineTuningJobs.splice(idx, 1);
     return removed;
@@ -1456,7 +1469,7 @@ app.delete('/api/v1/fine-tuning/:id', demoOnly, (req: Request, res: Response) =>
 // 2. DATA FOUNDRY & SYNTHETIC DATA ENGINE
 app.get('/api/v1/data-foundry', demoOnly, (req: Request, res: Response) => {
   const state = db.getState();
-  res.json({ datasets: state.syntheticDatasets, simulated: true });
+  res.json({ datasets: state.syntheticDatasets.filter((d) => d.orgId === res.locals.orgId), simulated: true });
 });
 
 app.post('/api/v1/data-foundry/generate', demoOnly, (req: Request, res: Response) => {
@@ -1517,7 +1530,7 @@ app.post('/api/v1/data-foundry/generate', demoOnly, (req: Request, res: Response
 app.post('/api/v1/data-foundry/annotate', demoOnly, (req: Request, res: Response) => {
   const { datasetId, sampleId, preference, rationale } = req.body;
   const state = db.getState();
-  const ds = state.syntheticDatasets.find((d) => d.id === datasetId);
+  const ds = state.syntheticDatasets.find((d) => d.id === datasetId && d.orgId === res.locals.orgId);
   if (!ds) return res.status(404).json({ error: 'Dataset not found' });
 
   const sample = ds.samples.find((s) => s.id === sampleId);
@@ -1532,7 +1545,7 @@ app.post('/api/v1/data-foundry/annotate', demoOnly, (req: Request, res: Response
 
 app.delete('/api/v1/data-foundry/:id', demoOnly, (req: Request, res: Response) => {
   const deleted = db.mutate((state) => {
-    const idx = state.syntheticDatasets.findIndex((d) => d.id === req.params.id);
+    const idx = state.syntheticDatasets.findIndex((d) => d.id === req.params.id && d.orgId === res.locals.orgId);
     if (idx === -1) return null;
     const [removed] = state.syntheticDatasets.splice(idx, 1);
     return removed;
@@ -1545,8 +1558,8 @@ app.delete('/api/v1/data-foundry/:id', demoOnly, (req: Request, res: Response) =
 app.get('/api/v1/red-teaming', demoOnly, (req: Request, res: Response) => {
   const state = db.getState();
   res.json({
-    runs: state.redTeamingRuns,
-    guardrails: state.guardrails,
+    runs: state.redTeamingRuns.filter((r) => r.orgId === res.locals.orgId),
+    guardrails: guardrailsOf(state, res.locals.orgId),
     simulated: true,
   });
 });
@@ -1613,7 +1626,7 @@ app.post('/api/v1/red-teaming/test-probe', demoOnly, (req: Request, res: Respons
   const state = db.getState();
   const lower = (prompt || '').toLowerCase();
 
-  const matchesBlocked = state.guardrails.blockedPatterns.some((pattern) => lower.includes(pattern.toLowerCase()));
+  const matchesBlocked = guardrailsOf(state, res.locals.orgId).blockedPatterns.some((pattern) => lower.includes(pattern.toLowerCase()));
   const hasInjectionSignature =
     lower.includes('ignore') ||
     lower.includes('system prompt') ||
@@ -1632,8 +1645,8 @@ app.post('/api/v1/red-teaming/test-probe', demoOnly, (req: Request, res: Respons
     responseText = `[SCALE SEAL INTERVENTION - 200 OK REFUSAL]\nRefusal Reason: Prompt contains forbidden adversarial control token or bypass directive.\nMitigation Applied: Strict token suppression, no model forward pass executed.\nAudit Trace ID: ${Date.now()}`;
   } else {
     responseText = `Prompt verified against active enterprise guardrails (PII Masking: ${
-      state.guardrails.piiMasking ? 'Active' : 'Off'
-    }, Sensitivity: ${state.guardrails.jailbreakSensitivity}).\nModel response generated safely without policy violations.`;
+      guardrailsOf(state, res.locals.orgId).piiMasking ? 'Active' : 'Off'
+    }, Sensitivity: ${guardrailsOf(state, res.locals.orgId).jailbreakSensitivity}).\nModel response generated safely without policy violations.`;
   }
 
   res.json({
@@ -1650,12 +1663,12 @@ app.post('/api/v1/red-teaming/test-probe', demoOnly, (req: Request, res: Respons
 app.patch('/api/v1/red-teaming/guardrails', demoOnly, (req: Request, res: Response) => {
   const { piiMasking, jailbreakSensitivity, blockCbrnHazards, semanticFirewallEnabled, toxicContentThreshold } = req.body;
   const updated = db.mutate((state) => {
-    if (piiMasking !== undefined) state.guardrails.piiMasking = piiMasking;
-    if (jailbreakSensitivity !== undefined) state.guardrails.jailbreakSensitivity = Number(jailbreakSensitivity);
-    if (blockCbrnHazards !== undefined) state.guardrails.blockCbrnHazards = blockCbrnHazards;
-    if (semanticFirewallEnabled !== undefined) state.guardrails.semanticFirewallEnabled = semanticFirewallEnabled;
-    if (toxicContentThreshold !== undefined) state.guardrails.toxicContentThreshold = Number(toxicContentThreshold);
-    return state.guardrails;
+    if (piiMasking !== undefined) guardrailsOf(state, res.locals.orgId).piiMasking = piiMasking;
+    if (jailbreakSensitivity !== undefined) guardrailsOf(state, res.locals.orgId).jailbreakSensitivity = Number(jailbreakSensitivity);
+    if (blockCbrnHazards !== undefined) guardrailsOf(state, res.locals.orgId).blockCbrnHazards = blockCbrnHazards;
+    if (semanticFirewallEnabled !== undefined) guardrailsOf(state, res.locals.orgId).semanticFirewallEnabled = semanticFirewallEnabled;
+    if (toxicContentThreshold !== undefined) guardrailsOf(state, res.locals.orgId).toxicContentThreshold = Number(toxicContentThreshold);
+    return guardrailsOf(state, res.locals.orgId);
   });
 
   db.logAudit({
@@ -1675,7 +1688,7 @@ app.patch('/api/v1/red-teaming/guardrails', demoOnly, (req: Request, res: Respon
 
 // Authoritative Roadmap & Release Gates Audit Endpoint
 app.get('/api/v1/roadmap', demoOnly, (req: Request, res: Response) => {
-  const state = db.getState();
+  const state = orgView(db.getState(), res.locals.orgId);
 
   const roadmapData = {
     summary: {
@@ -1957,8 +1970,12 @@ app.get('/api/v1/roadmap', demoOnly, (req: Request, res: Response) => {
 // Direct Gemini 4 Argon High-Thinking query endpoint (for instant testing from UI)
 app.post('/api/v1/ai/think-and-generate', async (req: Request, res: Response) => {
   const { prompt, systemInstruction } = req.body;
+  if (!db.getState().agents.some((a) => a.id === 'agent_invoice_auditor' && a.orgId === res.locals.orgId)) {
+    return res.status(404).json({ error: 'Agent not found' });
+  }
   try {
     const result = await executeAgentDirectly({
+      orgId: res.locals.orgId,
       agentId: 'agent_invoice_auditor',
       userInput: prompt,
       context: systemInstruction,
@@ -1973,7 +1990,7 @@ app.post('/api/v1/ai/think-and-generate', async (req: Request, res: Response) =>
 // ==================== PLATFORM SELF-TEST & VERIFICATION SUITE ====================
 app.get('/api/v1/system/self-test', demoOnly, async (req: Request, res: Response) => {
   const startTime = Date.now();
-  const state = db.getState();
+  const state = orgView(db.getState(), res.locals.orgId);
 
   const suites = [
     {
@@ -2092,9 +2109,9 @@ app.get('/api/v1/system/self-test', demoOnly, async (req: Request, res: Response
 // Test invoke deployment endpoint directly from Console sandbox without requiring token copy
 app.post('/api/v1/deployments/:id/test-invoke', async (req: Request, res: Response) => {
   const state = db.getState();
-  const deployment = state.deployments.find((d) => d.id === req.params.id);
+  const deployment = state.deployments.find((d) => d.id === req.params.id && d.orgId === res.locals.orgId);
   if (!deployment) return res.status(404).json({ error: 'Deployment not found' });
-  if (deployment.simulated && !state.settings.demoMode) {
+  if (deployment.simulated && !settingsOf(state, res.locals.orgId).demoMode) {
     return res.status(501).json({ error: 'This deployment was made by a simulated feature and runs only in demo mode.' });
   }
 
@@ -2139,10 +2156,11 @@ app.post('/api/v1/deployments/:id/test-invoke', async (req: Request, res: Respon
 // Re-index all knowledge documents
 app.post('/api/v1/knowledge/reindex-all', (req: Request, res: Response) => {
   const updatedDocs = db.mutate((state) => {
-    state.knowledge.forEach((doc) => {
+    const docs = state.knowledge.filter((k) => k.orgId === res.locals.orgId);
+    docs.forEach((doc) => {
       doc.updatedAt = new Date().toISOString();
     });
-    return state.knowledge;
+    return docs;
   });
 
   db.logAudit({
@@ -2166,7 +2184,7 @@ app.post('/api/v1/knowledge/reindex-all', (req: Request, res: Response) => {
 
 // Demo only: a fixed sample compliance result. Nothing is checked.
 app.post('/api/v1/governance/compliance-scan', demoOnly, (req: Request, res: Response) => {
-  const state = db.getState();
+  const state = orgView(db.getState(), res.locals.orgId);
   const scanResults = {
     scanId: `scan_${Date.now()}`,
     timestamp: new Date().toISOString(),
@@ -2200,7 +2218,7 @@ app.post('/api/v1/governance/compliance-scan', demoOnly, (req: Request, res: Res
 // Duplicate agent
 app.post('/api/v1/agents/:id/duplicate', (req: Request, res: Response) => {
   const state = db.getState();
-  const existing = state.agents.find((a) => a.id === req.params.id);
+  const existing = state.agents.find((a) => a.id === req.params.id && a.orgId === res.locals.orgId);
   if (!existing) return res.status(404).json({ error: 'Agent not found' });
 
   const cloned = db.mutate((s) => {
@@ -2232,7 +2250,7 @@ app.post('/api/v1/agents/:id/duplicate', (req: Request, res: Response) => {
 // Duplicate workflow
 app.post('/api/v1/workflows/:id/duplicate', (req: Request, res: Response) => {
   const state = db.getState();
-  const existing = state.workflows.find((w) => w.id === req.params.id);
+  const existing = state.workflows.find((w) => w.id === req.params.id && w.orgId === res.locals.orgId);
   if (!existing) return res.status(404).json({ error: 'Workflow not found' });
 
   const cloned = db.mutate((s) => {
@@ -2264,7 +2282,7 @@ app.post('/api/v1/workflows/:id/duplicate', (req: Request, res: Response) => {
 // Force sync integration
 app.post('/api/v1/integrations/:id/sync', demoOnly, (req: Request, res: Response) => {
   const state = db.getState();
-  const integration = state.integrations.find((i) => i.id === req.params.id);
+  const integration = state.integrations.find((i) => i.id === req.params.id && i.orgId === res.locals.orgId);
   if (!integration) return res.status(404).json({ error: 'Integration not found' });
 
   db.logAudit({

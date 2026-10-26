@@ -10,7 +10,7 @@ Deciding rule, fixed before T1 starts: T0 to T8 are ticked, `npm run gate` exits
 
 - An evaluation run never executes the candidate. It copies the expected output into the actual output and reports 100%: `server.ts#actualOutput: c.expectedOutput,`, `server.ts#accuracyRate: 100,`. L0 T6 labels it simulated in the meantime.
 - Cases already hold expected outputs, keywords and optional citations: `server/storage.ts#export interface EvaluationCase {`, `server/storage.ts#requiredCitations?: string[];`.
-- Publishing a deployment checks no evaluation (`server.ts#app.post('/api/v1/deployments', (req: Request, res: Response) => {`), and the deploy-approval setting is stored and never read: `server.ts#state.settings.requireHumanApprovalForDeploy = requireHumanApprovalForDeploy;`.
+- Publishing a deployment checks no evaluation (`server.ts#app.post('/api/v1/deployments', (req: Request, res: Response) => {`), and the deploy-approval setting is stored and never read: `server.ts#settings.requireHumanApprovalForDeploy = requireHumanApprovalForDeploy;`.
 
 ## Tasks
 

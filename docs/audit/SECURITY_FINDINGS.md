@@ -6,7 +6,7 @@ L0 T4, written 2026-10-26 against commit ac0984b, from the code read for `docs/a
 
 **Assets.** Each org's records (agents, workflows, executions, knowledge, evaluations, approvals); deployment API keys; the audit log; the store file; the model provider key.
 
-**Actors.** Anyone who can reach the port: the server binds every interface (`server.ts#app.listen(PORT, '0.0.0.0', () => {`) and has no sign-in, so an anonymous network client is the baseline attacker. A signed-in user of another org, and a low-privilege user of the same org, matter once L1 T3 adds identity. A holder of a deployment key. A crash or a full disk, for persistence.
+**Actors.** Anyone who can reach the port: the server binds every interface (`server.ts#app.listen(PORT, '0.0.0.0', () => {`) and had no sign-in until L1 T3, so an anonymous network client was the baseline attacker. A signed-in user of another org, and a low-privilege user of the same org, matter once L1 T3 adds identity. A holder of a deployment key. A crash or a full disk, for persistence.
 
 **Trust boundaries.** Browser to server, where the server trusts identity headers the browser chooses. Deployment caller to server, guarded only by the key. Server to the model provider, the only outbound call. Server to the filesystem, where all state is one JSON file.
 
@@ -39,43 +39,48 @@ Evidence: `server.ts#You can switch only to a workspace of your own organization
 Test: L1 T3: switching into a foreign org gets 403
 
 ### S4 · authentication · high · confidence high
-Roles are defined and never checked, so every caller can do everything, including changing settings and guardrails for every org.
-Evidence: `server/storage.ts#role: 'org_admin'`, `server.ts#state.settings.demoMode = demoMode;`, `server.ts#if (piiMasking !== undefined) state.guardrails.piiMasking = piiMasking;`
+Roles are defined and never checked, so every caller can do everything, including changing their org's settings and guardrails (for every org, until L1 T4).
+Evidence: `server/storage.ts#role: 'org_admin'`, `server.ts#settings.demoMode = demoMode;`, `server.ts#if (piiMasking !== undefined) guardrailsOf(state, res.locals.orgId).piiMasking = piiMasking;`
 Test: L1 T5: a table of role by route returns 2xx or 403 as the permission table says
 
 ### S5 · authentication · high · confidence high
 Anyone can decide an approval, a second decision overwrites the first, a finished execution can be approved, and the decider recorded was whoever the global variable named. Since L1 T3 the recorded decider is the signed-in user; the rest is open.
-Evidence: `server.ts#approval.decidedBy = res.locals.userId;`, `server.ts#const exec = state.executions.find((e) => e.id === req.params.id);`, `server.ts#cfoSignOff: 'GRANTED',`
+Evidence: `server.ts#approval.decidedBy = res.locals.userId;`, `server.ts#const exec = state.executions.find((e) => e.id === req.params.id && e.orgId === res.locals.orgId);`, `server.ts#cfoSignOff: 'GRANTED',`
 Test: L1 T6: a decision on a non-pending approval gets 409
 
 ### S6 · tenant isolation · critical · confidence high
 List routes return every org's records: integrations, evaluations, deployments, audit events, approvals, fine-tuning jobs, synthetic datasets and red-team runs.
-Evidence: `server.ts#res.json({ integrations: state.integrations });`, `server.ts#res.json({ evaluations: { ...state.evaluations, runs } });`, `server.ts#res.json({ approvals: state.approvals });`, `server.ts#jobs: state.fineTuningJobs,`, `server.ts#res.json({ datasets: state.syntheticDatasets, simulated: true });`, `server.ts#runs: state.redTeamingRuns,`
+Fixed in L1 T4: every list filters by the caller's org, and settings and guardrails are one record per org.
+Evidence: `server.ts#res.json({ integrations: state.integrations.filter((i) => i.orgId === res.locals.orgId) });`, `server.ts#res.json({ evaluations: { datasets: state.evaluations.datasets.filter((d) => d.orgId === res.locals.orgId), runs } });`, `server.ts#res.json({ approvals: state.approvals.filter((a) => a.orgId === res.locals.orgId) });`, `server.ts#jobs: state.fineTuningJobs.filter((j) => j.orgId === res.locals.orgId),`, `server.ts#res.json({ datasets: state.syntheticDatasets.filter((d) => d.orgId === res.locals.orgId), simulated: true });`, `server.ts#runs: state.redTeamingRuns.filter((r) => r.orgId === res.locals.orgId),`, `server/tenancy.test.ts#no list route returns another org's records`
 Test: L1 T4: no list route returns another org's records
 
 ### S7 · tenant isolation · critical · confidence high
 Routes that take an id never compare its org, so any caller can delete, cancel, approve, re-index, annotate, change the status of, or deploy another org's records. Duplicates keep the source org, so a caller can also create records inside another org.
-Evidence: `server.ts#const idx = state.knowledge.findIndex((k) => k.id === req.params.id);`, `server.ts#const idx = s.deployments.findIndex((d) => d.id === req.params.id);`, `server.ts#dep.status = status;`, `server.ts#const existing = state.agents.find((a) => a.id === req.params.id);`, `server.ts#const clone = JSON.parse(JSON.stringify(existing));`
+Fixed in L1 T4: every lookup by id also matches the caller's org, so another org's id answers like a missing one, and copies are made in the caller's org.
+Evidence: `server.ts#const idx = state.knowledge.findIndex((k) => k.id === req.params.id && k.orgId === res.locals.orgId);`, `server.ts#const idx = s.deployments.findIndex((d) => d.id === req.params.id && d.orgId === res.locals.orgId);`, `server.ts#dep.status = status;`, `server.ts#const existing = state.agents.find((a) => a.id === req.params.id && a.orgId === res.locals.orgId);`, `server.ts#const clone = JSON.parse(JSON.stringify(existing));`, `server/tenancy.test.ts#org B reading, changing, deleting, executing or duplicating org A's resources by id gets 404`
 Test: L1 T4: org B reading, changing, deleting, executing or duplicating org A's resources by id gets 404
 
 ### S8 · tenant isolation · critical · confidence high
 Knowledge search reads every org's documents, so normal use of the search box returns another org's content.
-Evidence: `server.ts#for (const doc of state.knowledge) {`
+Fixed in L1 T4: search reads only the caller's org's documents.
+Evidence: `server.ts#for (const doc of state.knowledge.filter((k) => k.orgId === res.locals.orgId)) {`, `server/tenancy.test.ts#a knowledge search as org B returns none of org A's chunks`
 Test: L1 T4: a knowledge search as org B returns none of org A's chunks
 
 ### S9 · tenant isolation · high · confidence high
 The engine looks up agents by id alone, so the agent test route runs any org's agent with its system prompt; a knowledge node with an unknown collection falls back to the first document in the store, whoever owns it.
-Evidence: `server/engine.ts#const agent = state.agents.find((a) => a.id === params.agentId);`, `server/engine.ts#state.knowledge[0];`
+Fixed in L1 T4: the engine looks agents and documents up within the run's org.
+Evidence: `server/engine.ts#const agent = state.agents.find((a) => a.id === params.agentId && a.orgId === params.orgId);`, `server/engine.ts#docs[0];`, `server/tenancy.test.ts#running org A's agent or knowledge collection as org B gets 404`
 Test: L1 T4: running org A's agent or knowledge collection as org B gets 404
 
 ### S10 · tenant isolation · medium · confidence high
 Integrations have no org field, so connectors are shared by every org: any caller can add one that all orgs see, or delete one that other orgs use.
-Evidence: `server/storage.ts#export interface ToolIntegration {`, `server.ts#state.integrations.push(item);`, `server.ts#const idx = state.integrations.findIndex((i) => i.id === req.params.id);`
+Fixed in L1 T4: integrations carry an org and a workspace; older stores give theirs to the first org.
+Evidence: `server/storage.ts#export interface ToolIntegration {`, `server.ts#state.integrations.push(item);`, `server.ts#const idx = state.integrations.findIndex((i) => i.id === req.params.id && i.orgId === res.locals.orgId);`, `server/tenancy.test.ts#org B cannot list or delete org A's integration`
 Test: L1 T4: org B cannot list or delete org A's integration
 
 ### S11 · secrets · critical · confidence high
 The deployment list returns every org's deployments with their API keys to any caller, and the screen copies them to the clipboard.
-Evidence: `server.ts#res.json({ deployments: state.deployments.filter((d) => state.settings.demoMode || !d.simulated) });`, `src/components/DeploymentCenter.tsx#navigator.clipboard.writeText(selectedDep.apiKey);`
+Evidence: `server.ts#res.json({ deployments: state.deployments.filter((d) => d.orgId === res.locals.orgId && (demo || !d.simulated)) });`, `src/components/DeploymentCenter.tsx#navigator.clipboard.writeText(selectedDep.apiKey);`
 Test: L1 T7: the deployment list holds no key material
 
 ### S12 · secrets · critical · confidence high
@@ -130,8 +135,8 @@ Evidence: `server.ts#userEmail: 'user@nexus.internal',`, `server.ts#userId: res.
 Test: L1 T13: an audit record names the session user and that user's email
 
 ### S22 · audit integrity · high · confidence high
-Audit reads and exports return every org's events.
-Evidence: `server.ts#res.json({ auditLogs: visible.slice(0, 50) });`, `server.ts#const logs = state.auditLogs.filter((l) => !l.simulated);`
+Audit reads and exports returned every org's events; since L1 T4 they return only the caller's org's.
+Evidence: `server.ts#res.json({ auditLogs: visible.slice(0, 50) });`, `server.ts#const logs = state.auditLogs.filter((l) => l.orgId === res.locals.orgId && !l.simulated);`
 Test: L1 T13: a cross-tenant audit export returns none of the other org's events
 
 ### S23 · audit integrity · medium · confidence high
@@ -215,7 +220,8 @@ Test: L1 T11: a request body over the limit gets 413
 
 ### S38 · tenant isolation · medium · confidence high
 Deployment runs and test-invokes return the run's variables as output, including the full text of the knowledge document the workflow read, to any caller who can invoke them; test-invoke needs no key.
-Evidence: `server/engine.ts#currentVariables.knowledgeContext = doc?.content || '';`
+Fixed in L1 T4: a run's returned output no longer carries the document text the knowledge node read.
+Evidence: `server/engine.ts#currentVariables.knowledgeContext = doc?.content || '';`, `server/tenancy.test.ts#a deployment response carries no knowledge document text`
 Test: L1 T4: a deployment response carries no knowledge document text
 
 ### S39 · authentication · medium · confidence high

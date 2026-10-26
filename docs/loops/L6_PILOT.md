@@ -9,7 +9,7 @@ Deciding rule, fixed before T1 starts: T0 to T9 are ticked and the human's exit 
 ## Current state (read 2026-10-25; T0 re-verifies)
 
 - Production mode serves the built client (`server.ts#app.use(express.static(path.join(__dirname, 'dist')));`); nothing validates configuration at boot.
-- Retention is stored and never enforced: `server.ts#state.settings.dataRetentionDays = Number(dataRetentionDays);`.
+- Retention is stored and never enforced: `server.ts#settings.dataRetentionDays = Number(dataRetentionDays);`.
 - Uptime and health figures are hardcoded: `server.ts#99.98% gateway uptime and cluster diagnostics`.
 
 ## Tasks

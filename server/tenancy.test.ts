@@ -13,7 +13,7 @@ process.env.NODE_ENV = 'test';
 delete process.env.GEMINI_API_KEY;
 process.chdir(fs.mkdtempSync(path.join(os.tmpdir(), 'nexus-tenancy-')));
 const { app } = await import('../server');
-const { db } = await import('./storage');
+const { db, settingsOf } = await import('./storage');
 const { hashPassword, verifyPassword, bootstrapAdmin } = await import('./auth');
 
 const server = app.listen(0);
@@ -73,66 +73,66 @@ const coverage: Record<string, 'covered' | `pending:T${number}`> = {
   'POST /api/v1/auth/logout': 'covered',
   'GET /api/v1/me': 'covered',
   'POST /api/v1/auth/switch-context': 'covered',
-  'GET /api/v1/agents': 'pending:T4',
-  'GET /api/v1/agents/:id': 'pending:T4',
-  'POST /api/v1/agents': 'pending:T4',
-  'PUT /api/v1/agents/:id': 'pending:T4',
-  'POST /api/v1/agents/:id/test': 'pending:T4',
-  'GET /api/v1/workflows': 'pending:T4',
-  'GET /api/v1/workflows/:id': 'pending:T4',
-  'POST /api/v1/workflows': 'pending:T4',
-  'PUT /api/v1/workflows/:id': 'pending:T4',
-  'POST /api/v1/workflows/:id/validate': 'pending:T4',
-  'POST /api/v1/workflows/:id/execute': 'pending:T4',
-  'GET /api/v1/analytics/trends': 'pending:T4',
-  'GET /api/v1/executions': 'pending:T4',
-  'GET /api/v1/executions/:id': 'pending:T4',
-  'POST /api/v1/executions/:id/approve': 'pending:T4',
-  'POST /api/v1/executions/:id/cancel': 'pending:T4',
-  'GET /api/v1/knowledge': 'pending:T4',
-  'POST /api/v1/knowledge': 'pending:T4',
-  'POST /api/v1/knowledge/search': 'pending:T4',
-  'DELETE /api/v1/knowledge/:id': 'pending:T4',
-  'POST /api/v1/knowledge/:id/reindex': 'pending:T4',
-  'GET /api/v1/integrations': 'pending:T4',
-  'POST /api/v1/integrations/:id/test': 'pending:T4',
-  'POST /api/v1/integrations': 'pending:T4',
-  'DELETE /api/v1/integrations/:id': 'pending:T4',
-  'GET /api/v1/evaluations': 'pending:T4',
-  'POST /api/v1/evaluations/datasets': 'pending:T4',
-  'POST /api/v1/evaluations/runs': 'pending:T4',
-  'GET /api/v1/deployments': 'pending:T4',
-  'POST /api/v1/deployments/:id/execute': 'pending:T4',
-  'POST /api/v1/deployments': 'pending:T4',
-  'PATCH /api/v1/deployments/:id/status': 'pending:T4',
-  'DELETE /api/v1/deployments/:id': 'pending:T4',
-  'GET /api/v1/audit-events': 'pending:T4',
-  'POST /api/v1/audit-events/simulate': 'pending:T4',
-  'GET /api/v1/approvals': 'pending:T4',
-  'GET /api/v1/audit-events/export': 'pending:T4',
-  'GET /api/v1/settings': 'pending:T4',
-  'PATCH /api/v1/settings': 'pending:T4',
-  'GET /api/v1/fine-tuning': 'pending:T4',
-  'POST /api/v1/fine-tuning': 'pending:T4',
-  'POST /api/v1/fine-tuning/:id/deploy': 'pending:T4',
-  'DELETE /api/v1/fine-tuning/:id': 'pending:T4',
-  'GET /api/v1/data-foundry': 'pending:T4',
-  'POST /api/v1/data-foundry/generate': 'pending:T4',
-  'POST /api/v1/data-foundry/annotate': 'pending:T4',
-  'DELETE /api/v1/data-foundry/:id': 'pending:T4',
-  'GET /api/v1/red-teaming': 'pending:T4',
-  'POST /api/v1/red-teaming/execute': 'pending:T4',
-  'POST /api/v1/red-teaming/test-probe': 'pending:T4',
-  'PATCH /api/v1/red-teaming/guardrails': 'pending:T4',
-  'GET /api/v1/roadmap': 'pending:T4',
-  'POST /api/v1/ai/think-and-generate': 'pending:T4',
-  'GET /api/v1/system/self-test': 'pending:T4',
-  'POST /api/v1/deployments/:id/test-invoke': 'pending:T4',
-  'POST /api/v1/knowledge/reindex-all': 'pending:T4',
-  'POST /api/v1/governance/compliance-scan': 'pending:T4',
-  'POST /api/v1/agents/:id/duplicate': 'pending:T4',
-  'POST /api/v1/workflows/:id/duplicate': 'pending:T4',
-  'POST /api/v1/integrations/:id/sync': 'pending:T4',
+  'GET /api/v1/agents': 'covered',
+  'GET /api/v1/agents/:id': 'covered',
+  'POST /api/v1/agents': 'covered',
+  'PUT /api/v1/agents/:id': 'covered',
+  'POST /api/v1/agents/:id/test': 'covered',
+  'GET /api/v1/workflows': 'covered',
+  'GET /api/v1/workflows/:id': 'covered',
+  'POST /api/v1/workflows': 'covered',
+  'PUT /api/v1/workflows/:id': 'covered',
+  'POST /api/v1/workflows/:id/validate': 'covered',
+  'POST /api/v1/workflows/:id/execute': 'covered',
+  'GET /api/v1/analytics/trends': 'covered',
+  'GET /api/v1/executions': 'covered',
+  'GET /api/v1/executions/:id': 'covered',
+  'POST /api/v1/executions/:id/approve': 'covered',
+  'POST /api/v1/executions/:id/cancel': 'covered',
+  'GET /api/v1/knowledge': 'covered',
+  'POST /api/v1/knowledge': 'covered',
+  'POST /api/v1/knowledge/search': 'covered',
+  'DELETE /api/v1/knowledge/:id': 'covered',
+  'POST /api/v1/knowledge/:id/reindex': 'covered',
+  'GET /api/v1/integrations': 'covered',
+  'POST /api/v1/integrations/:id/test': 'covered',
+  'POST /api/v1/integrations': 'covered',
+  'DELETE /api/v1/integrations/:id': 'covered',
+  'GET /api/v1/evaluations': 'covered',
+  'POST /api/v1/evaluations/datasets': 'covered',
+  'POST /api/v1/evaluations/runs': 'covered',
+  'GET /api/v1/deployments': 'covered',
+  'POST /api/v1/deployments/:id/execute': 'covered',
+  'POST /api/v1/deployments': 'covered',
+  'PATCH /api/v1/deployments/:id/status': 'covered',
+  'DELETE /api/v1/deployments/:id': 'covered',
+  'GET /api/v1/audit-events': 'covered',
+  'POST /api/v1/audit-events/simulate': 'covered',
+  'GET /api/v1/approvals': 'covered',
+  'GET /api/v1/audit-events/export': 'covered',
+  'GET /api/v1/settings': 'covered',
+  'PATCH /api/v1/settings': 'covered',
+  'GET /api/v1/fine-tuning': 'covered',
+  'POST /api/v1/fine-tuning': 'covered',
+  'POST /api/v1/fine-tuning/:id/deploy': 'covered',
+  'DELETE /api/v1/fine-tuning/:id': 'covered',
+  'GET /api/v1/data-foundry': 'covered',
+  'POST /api/v1/data-foundry/generate': 'covered',
+  'POST /api/v1/data-foundry/annotate': 'covered',
+  'DELETE /api/v1/data-foundry/:id': 'covered',
+  'GET /api/v1/red-teaming': 'covered',
+  'POST /api/v1/red-teaming/execute': 'covered',
+  'POST /api/v1/red-teaming/test-probe': 'covered',
+  'PATCH /api/v1/red-teaming/guardrails': 'covered',
+  'GET /api/v1/roadmap': 'covered',
+  'POST /api/v1/ai/think-and-generate': 'covered',
+  'GET /api/v1/system/self-test': 'covered',
+  'POST /api/v1/deployments/:id/test-invoke': 'covered',
+  'POST /api/v1/knowledge/reindex-all': 'covered',
+  'POST /api/v1/governance/compliance-scan': 'covered',
+  'POST /api/v1/agents/:id/duplicate': 'covered',
+  'POST /api/v1/workflows/:id/duplicate': 'covered',
+  'POST /api/v1/integrations/:id/sync': 'covered',
 };
 
 test('every org has one user per role, and the helper calls a route as that user', async () => {
@@ -241,4 +241,184 @@ test('NEXUS_ADMIN_PASSWORD gives the first org admin a password once, stored onl
   assert.equal(list[0].passwordHash, undefined);
   assert.equal(bootstrapAdmin(list, 'another'), undefined, 'once an admin has a password, the variable changes nothing');
   assert.ok(verifyPassword('first-boot-secret', admin!.passwordHash));
+});
+
+// L1 T4: org B reaches none of org A's records, through any route. Org A's records are made through the API,
+// so the server stamps their org; demo mode is on for both orgs so the demo-only routes answer too.
+const A = as(users.a_org_admin);
+const B = as(users.b_org_admin);
+const SECRET = 'Org A private ledger: wire 4417 to Banco Azul';
+db.mutate((s) => { settingsOf(s, 'org_a').demoMode = true; settingsOf(s, 'org_b').demoMode = true; });
+const made = async (res: Promise<{ status: number; body: any }>, key: string) => {
+  const r = await res;
+  assert.ok(r.status < 300, `could not create ${key}: ${r.status} ${JSON.stringify(r.body)}`);
+  return r.body[key];
+};
+const aWorkflow = await made(A('POST', '/api/v1/workflows', { name: 'A flow' }), 'workflow');
+const aDeployment = await made(A('POST', '/api/v1/deployments', { workflowId: aWorkflow.id, name: 'A dep' }), 'deployment');
+const a = {
+  agent: (await made(A('POST', '/api/v1/agents', { name: 'A agent' }), 'agent')).id,
+  workflow: aWorkflow.id,
+  document: (await made(A('POST', '/api/v1/knowledge', { title: 'A ledger', content: SECRET }), 'document')).id,
+  integration: (await made(A('POST', '/api/v1/integrations', { name: 'A connector' }), 'integration')).id,
+  dataset: (await made(A('POST', '/api/v1/evaluations/datasets', { name: 'A cases' }), 'dataset')).id,
+  deployment: aDeployment.id,
+  execution: (await made(A('POST', `/api/v1/workflows/${aWorkflow.id}/execute`, { amount: 10 }), 'execution')).id,
+  job: (await made(A('POST', '/api/v1/fine-tuning', { name: 'A tune' }), 'job')).id,
+  synthetic: (await made(A('POST', '/api/v1/data-foundry/generate', { name: 'A synth' }), 'dataset')).id,
+  redTeam: (await made(A('POST', '/api/v1/red-teaming/execute', { name: 'A probe' }), 'run')).id,
+  approval: 'apr_org_a',
+};
+db.mutate((s) => {
+  s.approvals.push({ id: a.approval, orgId: 'org_a', workspaceId: 'ws_a', executionId: a.execution, workflowId: a.workflow, workflowName: 'A flow', nodeId: 'n', nodeLabel: 'Approve', payload: {}, status: 'pending', createdAt: new Date().toISOString() });
+});
+const leaked = (body: unknown) => {
+  const text = typeof body === 'string' ? body : JSON.stringify(body);
+  // Quoted, so the id org_a does not match inside a name such as usr_b_org_admin.
+  return [...Object.values(a), '"org_a"', SECRET].filter((x) => text.includes(x));
+};
+
+test("no list route returns another org's records", async () => {
+  for (const url of ['/api/v1/agents', '/api/v1/workflows', '/api/v1/executions', '/api/v1/knowledge', '/api/v1/integrations',
+    '/api/v1/evaluations', '/api/v1/deployments', '/api/v1/audit-events', '/api/v1/approvals', '/api/v1/audit-events/export?format=json',
+    '/api/v1/fine-tuning', '/api/v1/data-foundry', '/api/v1/red-teaming', '/api/v1/settings', '/api/v1/analytics/trends?days=7',
+    '/api/v1/roadmap', '/api/v1/system/self-test']) {
+    const r = await B('GET', url);
+    assert.equal(r.status, 200, url);
+    assert.deepEqual(leaked(r.body), [], `${url} as org B`);
+  }
+  const csv = await fetch(`${base}/api/v1/audit-events/export?format=csv`, { headers: { cookie: cookies.get(users.b_org_admin.id)! } });
+  assert.deepEqual(leaked(await csv.text()), [], 'CSV export as org B');
+  // Org A's own list shows the record, so the check above is not vacuous.
+  assert.ok((await A('GET', '/api/v1/agents')).body.agents.some((x: { id: string }) => x.id === a.agent));
+});
+
+test("org B reading, changing, deleting, executing or duplicating org A's resources by id gets 404", async () => {
+  const attempts: [string, string, unknown?][] = [
+    ['GET', `/api/v1/agents/${a.agent}`], ['PUT', `/api/v1/agents/${a.agent}`, { name: 'taken' }],
+    ['POST', `/api/v1/agents/${a.agent}/test`, {}], ['POST', `/api/v1/agents/${a.agent}/duplicate`],
+    ['GET', `/api/v1/workflows/${a.workflow}`], ['PUT', `/api/v1/workflows/${a.workflow}`, { name: 'taken' }],
+    ['POST', `/api/v1/workflows/${a.workflow}/execute`, {}], ['POST', `/api/v1/workflows/${a.workflow}/duplicate`],
+    ['GET', `/api/v1/executions/${a.execution}`], ['POST', `/api/v1/executions/${a.execution}/approve`, { decision: 'approve' }],
+    ['POST', `/api/v1/executions/${a.execution}/cancel`],
+    ['POST', `/api/v1/knowledge/${a.document}/reindex`], ['DELETE', `/api/v1/knowledge/${a.document}`],
+    ['POST', `/api/v1/integrations/${a.integration}/test`], ['POST', `/api/v1/integrations/${a.integration}/sync`],
+    ['DELETE', `/api/v1/integrations/${a.integration}`],
+    ['POST', '/api/v1/evaluations/runs', { datasetId: a.dataset }],
+    ['POST', '/api/v1/deployments', { workflowId: a.workflow }],
+    ['PATCH', `/api/v1/deployments/${a.deployment}/status`, { status: 'suspended' }], ['DELETE', `/api/v1/deployments/${a.deployment}`],
+    ['POST', `/api/v1/deployments/${a.deployment}/test-invoke`, {}],
+    ['POST', `/api/v1/fine-tuning/${a.job}/deploy`], ['DELETE', `/api/v1/fine-tuning/${a.job}`],
+    ['POST', '/api/v1/data-foundry/annotate', { datasetId: a.synthetic, sampleId: 'x', preference: 'A' }],
+    ['DELETE', `/api/v1/data-foundry/${a.synthetic}`],
+    ['POST', '/api/v1/ai/think-and-generate', { prompt: 'hi' }],
+  ];
+  for (const [method, url, body] of attempts) {
+    const r = await B(method, url, body);
+    assert.equal(r.status, 404, `${method} ${url} as org B`);
+    assert.deepEqual(leaked(r.body), [], `${method} ${url} answer`);
+  }
+  const after = JSON.stringify([
+    (await A('GET', `/api/v1/agents/${a.agent}`)).body, (await A('GET', `/api/v1/workflows/${a.workflow}`)).body,
+    (await A('GET', '/api/v1/knowledge')).body, (await A('GET', '/api/v1/integrations')).body, (await A('GET', '/api/v1/deployments')).body,
+    (await A('GET', '/api/v1/fine-tuning')).body, (await A('GET', '/api/v1/data-foundry')).body,
+  ]);
+  for (const id of [a.document, a.integration, a.deployment, a.job, a.synthetic]) assert.ok(after.includes(id), `${id} still exists`);
+  assert.ok(!after.includes('taken'), 'nothing of org A was renamed');
+  assert.ok(after.includes(`"status":"${aDeployment.status}"`), 'the deployment status is unchanged');
+});
+
+test("a knowledge search as org B returns none of org A's chunks", async () => {
+  const query = { query: 'Banco Azul' };
+  const r = await B('POST', '/api/v1/knowledge/search', query);
+  assert.equal(r.status, 200);
+  assert.deepEqual(leaked(r.body), []);
+  // Org A's own search finds the chunk, so the check above is not vacuous.
+  assert.ok(leaked((await A('POST', '/api/v1/knowledge/search', query)).body).includes(SECRET));
+});
+
+test("running org A's agent or knowledge collection as org B gets 404", async () => {
+  assert.equal((await B('POST', `/api/v1/agents/${a.agent}/test`, {})).status, 404);
+  // A workflow of org B that names org A's agent and document by id runs without either.
+  const wf = await made(B('POST', '/api/v1/workflows', {
+    name: 'B probe',
+    nodes: [
+      { id: 's', type: 'start', label: 'Start', position: { x: 0, y: 0 }, config: {} },
+      { id: 'k', type: 'knowledge', label: 'Read', position: { x: 0, y: 0 }, config: { collectionId: a.document } },
+      { id: 'g', type: 'agent', label: 'Agent', position: { x: 0, y: 0 }, config: { agentId: a.agent } },
+      { id: 'e', type: 'end', label: 'End', position: { x: 0, y: 0 }, config: {} },
+    ],
+    edges: [{ id: 'e1', source: 's', target: 'k' }, { id: 'e2', source: 'k', target: 'g' }, { id: 'e3', source: 'g', target: 'e' }],
+  }), 'workflow');
+  const run = await B('POST', `/api/v1/workflows/${wf.id}/execute`, {});
+  // The run echoes the two ids org B itself wrote into its graph; it must read nothing behind them.
+  assert.deepEqual(leaked(run.body).filter((x) => x !== a.agent && x !== a.document), [], 'the run read nothing of org A');
+  const agentNode = run.body.execution.nodeExecutions.find((n: { nodeId: string }) => n.nodeId === 'g');
+  assert.equal(agentNode?.status, 'failed', "org A's agent did not run");
+});
+
+test("org B cannot list or delete org A's integration", async () => {
+  assert.ok(!(await B('GET', '/api/v1/integrations')).body.integrations.some((i: { id: string }) => i.id === a.integration));
+  assert.equal((await B('DELETE', `/api/v1/integrations/${a.integration}`)).status, 404);
+  assert.ok((await A('GET', '/api/v1/integrations')).body.integrations.some((i: { id: string }) => i.id === a.integration));
+});
+
+test('records org B creates belong to org B, whatever org the body names', async () => {
+  const forged = { orgId: 'org_a', workspaceId: 'ws_a', name: 'forged' };
+  const records = [
+    await made(B('POST', '/api/v1/agents', forged), 'agent'),
+    await made(B('POST', '/api/v1/workflows', forged), 'workflow'),
+    await made(B('POST', '/api/v1/knowledge', { ...forged, title: 'forged', content: 'x' }), 'document'),
+    await made(B('POST', '/api/v1/integrations', forged), 'integration'),
+    await made(B('POST', '/api/v1/evaluations/datasets', forged), 'dataset'),
+  ];
+  for (const r of records) assert.deepEqual([r.orgId, r.workspaceId], ['org_b', 'ws_b'], JSON.stringify(r).slice(0, 80));
+});
+
+test("org B's settings and guardrails changes leave org A's alone", async () => {
+  const snapshot = async () => JSON.stringify([(await A('GET', '/api/v1/settings')).body, (await A('GET', '/api/v1/red-teaming')).body.guardrails]);
+  const before = await snapshot();
+  assert.equal((await B('PATCH', '/api/v1/settings', { dataRetentionDays: 1 })).status, 200);
+  assert.equal((await B('PATCH', '/api/v1/red-teaming/guardrails', { piiMasking: false, toxicContentThreshold: 0.1 })).status, 200);
+  assert.equal((await B('GET', '/api/v1/settings')).body.settings.dataRetentionDays, 1);
+  assert.equal(await snapshot(), before);
+});
+
+test("org-wide actions of org B touch and report only org B's records", async () => {
+  const touched = () => db.getState().knowledge.find((k) => k.id === a.document)!.updatedAt;
+  const before = touched();
+  const reindex = await B('POST', '/api/v1/knowledge/reindex-all');
+  assert.equal(reindex.body.reindexedCount, db.getState().knowledge.filter((k) => k.orgId === 'org_b').length);
+  assert.equal(touched(), before, "org A's document was not touched");
+  const calls: [string, string, unknown?][] = [
+    ['POST', '/api/v1/governance/compliance-scan'], ['POST', '/api/v1/audit-events/simulate', { eventType: 'user' }],
+    ['POST', `/api/v1/workflows/${a.workflow}/validate`, { nodes: [], edges: [] }], ['POST', '/api/v1/red-teaming/test-probe', { prompt: 'hello' }],
+  ];
+  for (const [method, url, body] of calls) {
+    const r = await B(method, url, body);
+    assert.ok(r.status < 500, `${url}: ${r.status}`);
+    assert.deepEqual(leaked(r.body), [], url);
+  }
+  const roadmap = (await B('GET', '/api/v1/roadmap')).body;
+  assert.equal(roadmap.summary.activeCounts.agents, (await B('GET', '/api/v1/agents')).body.agents.length);
+});
+
+test('a deployment key works only for its own deployment, and a deployment response carries no knowledge document text', async () => {
+  const bWorkflow = await made(B('POST', '/api/v1/workflows', { name: 'B flow' }), 'workflow');
+  const bDeployment = await made(B('POST', '/api/v1/deployments', { workflowId: bWorkflow.id }), 'deployment');
+  const run = (id: string, key: string) => fetch(`${base}/api/v1/deployments/${id}/execute`, {
+    method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` }, body: '{}',
+  });
+  assert.equal((await run(a.deployment, bDeployment.apiKey)).status, 401, "org B's key on org A's deployment");
+
+  // The seed deployment's workflow reads a knowledge document; its answer must not carry that document's text.
+  const dep = db.getState().deployments.find((d) => d.id === 'dep_prod_fin_reconciliation')!;
+  const res = await run(dep.id, dep.apiKey);
+  assert.equal(res.status, 200);
+  const text = await res.text();
+  const exec = db.getState().executions.find((e) => e.id === JSON.parse(text).executionId)!;
+  assert.ok(exec.nodeExecutions.some((n) => n.nodeType === 'knowledge' && n.status === 'success'), 'the run read a document');
+  const docs = db.getState().knowledge.filter((k) => k.orgId === dep.orgId).map((k) => k.content.slice(0, 60));
+  assert.deepEqual(docs.filter((d) => text.includes(d)), []);
+  assert.ok(!text.includes('knowledgeContext'));
 });

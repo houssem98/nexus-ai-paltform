@@ -9,8 +9,8 @@ Deciding rule, fixed before T1 starts: T0 to T9 are ticked, holdout recall@k is 
 ## Current state (read 2026-10-25; T0 re-verifies)
 
 - Ingestion splits text on blank lines: `server.ts#.split('\n\n')`. Re-indexing only updates a timestamp, while the audit text says vectors were rebuilt: `server.ts#VECTOR_INDEX_OPTIMIZED`, `server.ts#VECTOR_INDEX_FULL_REBUILD`.
-- Search is a substring match over every tenant's documents with a constant score: `server.ts#for (const doc of state.knowledge) {`, `server.ts#relevanceScore: 0.94,`.
-- The engine's knowledge node returns every chunk of one document, unranked (L0 T6 removed its constant score), and falls back to the first document in the store: `server/engine.ts#const matches = doc?.chunks.map((c) => ({`, `server/engine.ts#|| state.knowledge[0];`.
+- Search is a substring match over the caller's org's documents (every tenant's until L1 T4) with a constant score: `server.ts#for (const doc of state.knowledge.filter((k) => k.orgId === res.locals.orgId)) {`, `server.ts#relevanceScore: 0.94,`.
+- The engine's knowledge node returns every chunk of one document, unranked (L0 T6 removed its constant score), and falls back to the first document in the store: `server/engine.ts#const matches = doc?.chunks.map((c) => ({`, `server/engine.ts#|| docs[0];`.
 - Integration tests and syncs make no network call and report success, in demo mode only and marked simulated: `server.ts#statusMessage: 'Connection verified via authenticated TLS gateway',`. Since L0 T8 they no longer mark the connector connected, and a new connector starts disconnected: `server.ts#status: 'disconnected' as const,`.
 
 ## Tasks
