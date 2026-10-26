@@ -20,7 +20,7 @@ Phases come from `roadmap/worldclassroadmap.md`; the plan and its evidence are i
 
 ## Loops
 
-- [ ] L0 Truth. ledger: `docs/loops/L0_TRUTH.md` · needs: none. · budget 15 ticks or $15 · `roadmap/worldclassroadmap.md#Phase 0 — Establish the truth`
+- [x] L0 Truth. ledger: `docs/loops/L0_TRUTH.md` · needs: none. · budget 15 ticks or $15 · `roadmap/worldclassroadmap.md#Phase 0 — Establish the truth`
 - [ ] L1 Trust. ledger: `docs/loops/L1_TRUST.md` · needs: L0. · budget 25 ticks or $25 · `roadmap/worldclassroadmap.md#Phase 1 — Secure the platform`
 - [ ] L2 Runtime. ledger: `docs/loops/L2_RUNTIME.md` · needs: L1. · budget 20 ticks or $25 · `roadmap/worldclassroadmap.md#Phase 2 — Make agents genuinely execute`
 - [ ] L3 Workflow. ledger: `docs/loops/L3_WORKFLOW.md` · needs: L2. · budget 20 ticks or $20 · `roadmap/worldclassroadmap.md#Phase 3 — Turn the graph into a real product`
