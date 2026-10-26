@@ -40,7 +40,8 @@ Test: L1 T3: switching into a foreign org gets 403
 
 ### S4 · authentication · high · confidence high
 Roles are defined and never checked, so every caller can do everything, including changing their org's settings and guardrails (for every org, until L1 T4).
-Evidence: `server/storage.ts#role: 'org_admin'`, `server.ts#settings.demoMode = demoMode;`, `server.ts#if (piiMasking !== undefined) guardrailsOf(state, res.locals.orgId).piiMasking = piiMasking;`
+Fixed in L1 T5: every changing request is checked against one permission table; settings and guardrails need org_admin.
+Evidence: `server.ts#if (!allowed(user.role, req.method, req.baseUrl + req.path)) {`, `server/tenancy.test.ts#a table of role by route returns 2xx or 403 as the permission table says`, `server/storage.ts#role: 'org_admin'`, `server.ts#settings.demoMode = demoMode;`, `server.ts#if (piiMasking !== undefined) guardrailsOf(state, res.locals.orgId).piiMasking = piiMasking;`
 Test: L1 T5: a table of role by route returns 2xx or 403 as the permission table says
 
 ### S5 · authentication · high · confidence high

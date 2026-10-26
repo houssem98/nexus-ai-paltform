@@ -48,7 +48,7 @@ Nexus AI Platform is a modular, high-security enterprise platform for designing,
 
 ## 4. Tenant Isolation & RBAC
 - Tenant Boundary (**partial**): records carry `orgId` and `workspaceId`, but identity comes from request headers and many routes ignore the org (findings S1, S2 and S6 to S10).
-- Roles (**not implemented**: defined, never checked; L1 T5):
+- Roles (**implemented** in L1 T5: one permission table, `server/permissions.ts#export const PERMISSIONS: Record<string, Role[]> = {`, checked on every changing request, `server.ts#if (!allowed(user.role, req.method, req.baseUrl + req.path)) {`; every role of an org may read; a changing route missing from the table is refused; proven for each role on each changing route by `server/tenancy.test.ts#a table of role by route returns 2xx or 403 as the permission table says`):
   - `org_admin`: Full tenant administrative controls, model allowlist, and policy overrides.
   - `workspace_admin`: Workspace management, publishing approvals, deployment creation.
   - `builder`: Agent and workflow authoring, test execution, prompt engineering.

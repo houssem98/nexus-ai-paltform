@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { db, simulatedScope, settingsOf, guardrailsOf, orgView, type User } from './server/storage';
 import { validateGraph, runWorkflowExecution, executeAgentDirectly } from './server/engine';
+import { allowed } from './server/permissions';
 import { bootstrapAdmin, createSession, endSession, publicUser, readSession, sessionCookie, verifyPassword } from './server/auth';
 
 dotenv.config();
@@ -28,6 +29,9 @@ app.use('/api', (req: Request, res: Response, next: NextFunction) => {
   res.locals.userId = user.id;
   res.locals.orgId = user.orgId;
   res.locals.workspaceId = found.session.workspaceId;
+  if (!allowed(user.role, req.method, req.baseUrl + req.path)) {
+    return res.status(403).json({ error: 'Your role may not do this.' });
+  }
   next();
 });
 

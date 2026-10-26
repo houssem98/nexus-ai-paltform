@@ -422,3 +422,99 @@ test('a deployment key works only for its own deployment, and a deployment respo
   assert.deepEqual(docs.filter((d) => text.includes(d)), []);
   assert.ok(!text.includes('knowledgeContext'));
 });
+
+// L1 T5: every changing route, for each of the six roles of org B, answers 2xx where the permission table allows
+// that role and 403 where it does not. An allowed call gets a real target, made just before by org B's admin.
+const { PERMISSIONS } = await import('./permissions');
+const created = async (url: string, body: unknown, key: string) => (await made(B('POST', url, body), key)).id as string;
+const runningExecution = () => {
+  const id = `exec_rbac_${Math.random().toString(36).slice(2)}`;
+  db.mutate((s) => {
+    s.executions.unshift({ id, orgId: 'org_b', workspaceId: 'ws_b', workflowId: 'wf', workflowName: 'wf', workflowVersion: 1, trigger: 'manual', status: 'running', input: {}, nodeExecutions: [], startedAt: new Date().toISOString() } as any);
+    s.approvals.push({ id: `apr_${id}`, orgId: 'org_b', workspaceId: 'ws_b', executionId: id, workflowId: 'wf', workflowName: 'wf', nodeId: 'n', nodeLabel: 'Approve', payload: {}, status: 'pending', createdAt: new Date().toISOString() });
+  });
+  return id;
+};
+// [url, body] for one allowed call on a fresh target of org B.
+const target: Record<string, () => Promise<[string, unknown?]>> = {
+  'POST /api/v1/auth/logout': async () => ['/api/v1/auth/logout'],
+  'POST /api/v1/auth/switch-context': async () => ['/api/v1/auth/switch-context', { workspaceId: 'ws_b' }],
+  'POST /api/v1/knowledge/search': async () => ['/api/v1/knowledge/search', { query: 'x' }],
+  'POST /api/v1/agents': async () => ['/api/v1/agents', { name: 'rbac' }],
+  'PUT /api/v1/agents/:id': async () => [`/api/v1/agents/${await created('/api/v1/agents', { name: 'r' }, 'agent')}`, { name: 'r2' }],
+  'POST /api/v1/agents/:id/test': async () => [`/api/v1/agents/${await created('/api/v1/agents', { name: 'r' }, 'agent')}/test`, {}],
+  'POST /api/v1/agents/:id/duplicate': async () => [`/api/v1/agents/${await created('/api/v1/agents', { name: 'r' }, 'agent')}/duplicate`],
+  'POST /api/v1/workflows': async () => ['/api/v1/workflows', { name: 'rbac' }],
+  'PUT /api/v1/workflows/:id': async () => [`/api/v1/workflows/${await created('/api/v1/workflows', { name: 'r' }, 'workflow')}`, { name: 'r2' }],
+  'POST /api/v1/workflows/:id/validate': async () => [`/api/v1/workflows/${await created('/api/v1/workflows', { name: 'r' }, 'workflow')}/validate`, { nodes: [], edges: [] }],
+  'POST /api/v1/workflows/:id/duplicate': async () => [`/api/v1/workflows/${await created('/api/v1/workflows', { name: 'r' }, 'workflow')}/duplicate`],
+  'POST /api/v1/workflows/:id/execute': async () => [`/api/v1/workflows/${await created('/api/v1/workflows', { name: 'r' }, 'workflow')}/execute`, {}],
+  'POST /api/v1/knowledge': async () => ['/api/v1/knowledge', { title: 'r', content: 'r' }],
+  'DELETE /api/v1/knowledge/:id': async () => [`/api/v1/knowledge/${await created('/api/v1/knowledge', { title: 'r', content: 'r' }, 'document')}`],
+  'POST /api/v1/knowledge/:id/reindex': async () => [`/api/v1/knowledge/${await created('/api/v1/knowledge', { title: 'r', content: 'r' }, 'document')}/reindex`],
+  'POST /api/v1/knowledge/reindex-all': async () => ['/api/v1/knowledge/reindex-all'],
+  'POST /api/v1/integrations': async () => ['/api/v1/integrations', { name: 'r' }],
+  'POST /api/v1/integrations/:id/test': async () => [`/api/v1/integrations/${await created('/api/v1/integrations', { name: 'r' }, 'integration')}/test`],
+  'POST /api/v1/integrations/:id/sync': async () => [`/api/v1/integrations/${await created('/api/v1/integrations', { name: 'r' }, 'integration')}/sync`],
+  'DELETE /api/v1/integrations/:id': async () => [`/api/v1/integrations/${await created('/api/v1/integrations', { name: 'r' }, 'integration')}`],
+  'POST /api/v1/evaluations/datasets': async () => ['/api/v1/evaluations/datasets', { name: 'r' }],
+  'POST /api/v1/evaluations/runs': async () => ['/api/v1/evaluations/runs', { datasetId: await created('/api/v1/evaluations/datasets', { name: 'r' }, 'dataset') }],
+  'POST /api/v1/deployments': async () => ['/api/v1/deployments', { workflowId: await created('/api/v1/workflows', { name: 'r' }, 'workflow') }],
+  'PATCH /api/v1/deployments/:id/status': async () => [`/api/v1/deployments/${await created('/api/v1/deployments', {}, 'deployment')}/status`, { status: 'active' }],
+  'DELETE /api/v1/deployments/:id': async () => [`/api/v1/deployments/${await created('/api/v1/deployments', {}, 'deployment')}`],
+  'POST /api/v1/deployments/:id/test-invoke': async () => [`/api/v1/deployments/${await created('/api/v1/deployments', {}, 'deployment')}/test-invoke`, {}],
+  'POST /api/v1/executions/:id/approve': async () => [`/api/v1/executions/${runningExecution()}/approve`, { decision: 'approve' }],
+  'POST /api/v1/executions/:id/cancel': async () => [`/api/v1/executions/${runningExecution()}/cancel`],
+  'POST /api/v1/audit-events/simulate': async () => ['/api/v1/audit-events/simulate', { eventType: 'user' }],
+  'PATCH /api/v1/settings': async () => ['/api/v1/settings', {}],
+  'POST /api/v1/fine-tuning': async () => ['/api/v1/fine-tuning', { name: 'r' }],
+  'POST /api/v1/fine-tuning/:id/deploy': async () => [`/api/v1/fine-tuning/${await created('/api/v1/fine-tuning', { name: 'r' }, 'job')}/deploy`],
+  'DELETE /api/v1/fine-tuning/:id': async () => [`/api/v1/fine-tuning/${await created('/api/v1/fine-tuning', { name: 'r' }, 'job')}`],
+  'POST /api/v1/data-foundry/generate': async () => ['/api/v1/data-foundry/generate', { name: 'r' }],
+  'POST /api/v1/data-foundry/annotate': async () => {
+    const ds = await made(B('POST', '/api/v1/data-foundry/generate', { name: 'r' }), 'dataset');
+    return ['/api/v1/data-foundry/annotate', { datasetId: ds.id, sampleId: ds.samples[0].id, preference: 'A' }];
+  },
+  'DELETE /api/v1/data-foundry/:id': async () => [`/api/v1/data-foundry/${await created('/api/v1/data-foundry/generate', { name: 'r' }, 'dataset')}`],
+  'POST /api/v1/red-teaming/execute': async () => ['/api/v1/red-teaming/execute', { name: 'r' }],
+  'POST /api/v1/red-teaming/test-probe': async () => ['/api/v1/red-teaming/test-probe', { prompt: 'hello' }],
+  'PATCH /api/v1/red-teaming/guardrails': async () => ['/api/v1/red-teaming/guardrails', {}],
+  'POST /api/v1/governance/compliance-scan': async () => ['/api/v1/governance/compliance-scan'],
+  // Runs a seed-org agent by a fixed id, so outside the seed org it answers 404 even when allowed.
+  'POST /api/v1/ai/think-and-generate': async () => ['/api/v1/ai/think-and-generate', { prompt: 'hi' }],
+};
+const allowedButNot2xx: Record<string, number> = { 'POST /api/v1/ai/think-and-generate': 404 };
+
+test('a table of role by route returns 2xx or 403 as the permission table says', async () => {
+  const open = ['POST /api/v1/auth/login', 'POST /api/v1/deployments/:id/execute'];
+  const changing = registered().filter((r) => !r.startsWith('GET ') && !open.includes(r));
+  assert.deepEqual(changing.filter((r) => !(r in PERMISSIONS)), [], 'changing routes missing from the permission table');
+  assert.deepEqual(changing.filter((r) => !(r in target)), [], 'changing routes this test cannot exercise');
+  for (const route of changing) {
+    const [method] = route.split(' ');
+    for (const role of roles) {
+      const user = users[`b_${role}`];
+      const may = PERMISSIONS[route].includes(role);
+      // Signing out ends the session, so that call gets a session of its own.
+      if (route === 'POST /api/v1/auth/logout') cookies.delete(user.id);
+      const before = JSON.stringify(db.getState());
+      const [url, body] = may ? await target[route]() : [route.split(' ')[1].replace(/:\w+/g, 'x'), {}];
+      const r = await as(user)(method, url, body);
+      if (route === 'POST /api/v1/auth/logout') cookies.delete(user.id);
+      if (!may) {
+        assert.equal(r.status, 403, `${role} on ${route}`);
+        assert.equal(JSON.stringify(db.getState()), before, `${role} on ${route} changed the store`);
+      } else if (route in allowedButNot2xx) {
+        assert.equal(r.status, allowedButNot2xx[route], `${role} on ${route}`);
+      } else {
+        assert.ok(r.status >= 200 && r.status < 300, `${role} on ${route} got ${r.status}: ${JSON.stringify(r.body).slice(0, 120)}`);
+      }
+    }
+  }
+});
+
+test('reading stays open to every role of the org, viewer included', async () => {
+  for (const url of ['/api/v1/agents', '/api/v1/workflows', '/api/v1/executions', '/api/v1/settings', '/api/v1/audit-events']) {
+    assert.equal((await as(users.b_viewer)('GET', url)).status, 200, url);
+  }
+});
