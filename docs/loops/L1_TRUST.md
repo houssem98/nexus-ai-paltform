@@ -12,7 +12,7 @@ Deciding rule, fixed before T1 starts: T0 to T14 are ticked, the T1 coverage tab
 - Routes that read or change other tenants' data, because they never compare the org: `server.ts#res.json({ integrations: state.integrations });`, `server.ts#res.json({ evaluations: { ...state.evaluations, runs } });`, `server.ts#res.json({ deployments: state.deployments.filter((d) => state.settings.demoMode || !d.simulated) });`, `server.ts#res.json({ auditLogs: visible.slice(0, 50) });`, `server.ts#res.json({ approvals: state.approvals });`, `server.ts#for (const doc of state.knowledge) {`, `server.ts#const idx = state.knowledge.findIndex((k) => k.id === req.params.id);`, `server.ts#const exec = state.executions.find((e) => e.id === req.params.id);`, `server.ts#const existing = state.agents.find((a) => a.id === req.params.id);`. Integrations have no tenant field at all: `server/storage.ts#export interface ToolIntegration {`.
 - Deployment keys are returned by the unfiltered list above, generated with `server.ts#const randomHex = Math.random().toString(36).substring(2, 10);` or `server.ts#nx_live_ft_`, and compared with `server.ts#token !== deployment.apiKey`. `server.ts#/api/v1/deployments/:id/test-invoke` runs a deployment with no key at all.
 - Roles are defined (`server/storage.ts#role: 'org_admin'`) and nothing checks them. An approval records whoever the global variable names: `server.ts#approval.decidedBy = currentUserId;`.
-- Persistence rewrites the whole file, not atomically: `server/storage.ts#fs.writeFileSync(DATA_FILE, JSON.stringify(state, null, 2), 'utf-8');`. Write failures are only logged: `server/storage.ts#console.error('Failed to write store file:', e);`. An unreadable file at boot is replaced by seed data: `server/storage.ts#this.saveState(seed);`.
+- Persistence rewrote the whole file in place, only logged a failed write, and replaced an unreadable file at boot with seed data, until T8 (see its Journal entry): now `server/storage.ts#fs.renameSync(tmp, DATA_FILE);`, `server/storage.ts#this.state = this.loadState();`, `server/storage.ts#Never replace a damaged store with seed data`.
 - Stored and never enforced: `server.ts#rateLimitPerMinute: Number(rateLimitPerMinute) || 120,`. Body size limit: `server.ts#app.use(express.json({ limit: '10mb' }));`.
 - No outbound HTTP call exists in `server.ts` or the server directory (searched for fetch, new URL, http.request and https.request on 2026-10-25 and again on 2026-10-26). Connector URLs are user-supplied: `server.ts#baseUrl: baseUrl || 'https://api.internal.enterprise/v1',`.
 - Audit export covers every tenant and quotes cells without neutralizing formulas: `server.ts#nexus_audit_events.csv`.
@@ -27,7 +27,7 @@ Deciding rule, fixed before T1 starts: T0 to T14 are ticked, the T1 coverage tab
 - [ ] T5 RBAC. needs: T3. One permission table for the six roles (`server/storage.ts#role: 'org_admin'`), checked on every mutating route. Evidence: a table-driven test of role by route asserting 2xx or 403. Finding tests (`docs/audit/SECURITY_FINDINGS.md`): S4: a table of role by route returns 2xx or 403 as the permission table says.
 - [ ] T6 Approval enforcement. needs: T5. A decision requires the node's role (`server/engine.ts#waitingForRole: node.config.requiredRole || 'workspace_admin',`), records the session user, and a decision on a non-pending approval gets 409. Resuming the workflow after approval is L3 T4. Evidence: tests for a missing role (403), a second decision (409), and the recorded decider.
 - [ ] T7 Deployment keys. needs: T4. Keys come from `node:crypto` random bytes, are stored as hashes, shown once at creation, never returned by the list, and compared in constant time; test-invoke requires an authorized session. Evidence: tests: the list holds no key material; a wrong key gets 401; test-invoke without a session gets 401. Finding tests (`docs/audit/SECURITY_FINDINGS.md`): S11: the deployment list holds no key material; S13: a new key has 32 bytes from node:crypto randomBytes; S14: a stored deployment holds a key hash, not the key; S15: key verification compares hashes with timingSafeEqual; S16: executing a suspended deployment gets 403; S28: the dev server does not serve the data store or the server source (passes since L0 T8).
-- [ ] T8 Store integrity. needs: T0. Write to a temporary file and rename it; a failed write fails the request; an unreadable store at boot stops the server with a clear error and leaves the file untouched. Evidence: tests: a simulated crash mid-write leaves the previous state readable; a corrupt store makes boot fail without modifying the file; a write error returns 5xx.
+- [x] T8 Store integrity. needs: T0. Write to a temporary file and rename it; a failed write fails the request; an unreadable store at boot stops the server with a clear error and leaves the file untouched. Evidence: tests: a simulated crash mid-write leaves the previous state readable; a corrupt store makes boot fail without modifying the file; a write error returns 5xx.
 - [ ] T9 (human) Storage decision. needs: T8. Phase 1 asks for transactional storage (`roadmap/worldclassroadmap.md#Move shared platform state to transactional persistent storage.`). Options: keep the atomic JSON file, or move to `node:sqlite`, which the installed Node v25.8.1 provides (checked on 2026-10-25 by loading it with require). Also decide whether `data/nexus-store.json` stays tracked by git. Evidence: the decision lines in the Journal.
 - [ ] T10 Transactional store. needs: T9. Implement the T9 choice. Evidence: tests: two interleaved mutating requests lose no update; state survives a restart; the suite never touches `data/nexus-store.json`.
 - [ ] T11 Validation, errors, limits. needs: T4. Validate request bodies against schemas; error responses carry no stack traces or internals; enforce the deployment rate limit; justify or lower the body size limit. Evidence: tests: an invalid body gets 400 without internals; one call over the limit gets 429. Finding tests (`docs/audit/SECURITY_FINDINGS.md`): S17: one call over the rate limit gets 429; S29: a malformed dataset or graph fails its request with 4xx and the server keeps answering; S30: an invoice without a numeric, non-negative amount is refused before it runs; S33: agent output cannot overwrite the workflow input; S35: an invalid deployment status gets 400 and changes nothing; S37: a request body over the limit gets 413.
@@ -69,3 +69,24 @@ Deciding rule, fixed before T1 starts: T0 to T14 are ticked, the T1 coverage tab
   ```
 
   Direction: goal unchanged; the fixture is what lets "one tenant cannot reach another" be proven route by route, which is the proof an institution asks for. Next: T2 (human) authentication method blocks T3; the next agent task is T8 store integrity.
+- 2026-10-26 · L1/T8 · started T8
+- 2026-10-26 · L1/T8 · passed · gate green · commit see `git log --grep "loop(L1/T8)"` · `server/storage.ts` now writes a flushed temporary file and renames it over the store; a failed write throws to the caller and memory reloads from disk, so a refused change does not reappear on the next write; an unreadable store, or one with no organizations, stops boot with an error naming the file and is left untouched, where it used to be overwritten with seed data. The three new tests in `server/storage.test.ts` failed first (`Missing expected exception.`, `boot must fail`, `got 200`). Limits, written into S26 and the roadmap: an async route whose write fails still gets no response (S29, T11), and concurrent changes are T10. graph-lint flagged 9 citations of the old code in five docs, which now describe the new code. Evidence:
+
+  ```
+  $ node --import tsx --test server/storage.test.ts
+  ✔ storage seeds an empty directory
+  ✔ a simulated crash mid-write leaves the previous state readable
+  ✔ a corrupt store makes boot fail without modifying the file
+  ✔ a write error returns 5xx
+  ℹ pass 4
+  ℹ fail 0
+  $ npm run gate
+  graph-lint: clean
+  ℹ tests 33
+  ℹ pass 33
+  ℹ fail 0
+  gate-guard: clean · HEAD..working tree
+  gate exit 0
+  ```
+
+  Direction: goal unchanged; an institution will not trust a store that can lose everything on one bad write, and that path is closed. Next: T12 egress guard (T2, the human's sign-in decision, still blocks T3 to T7; T9 storage decision is the human's and is now unblocked).

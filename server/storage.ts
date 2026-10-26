@@ -1411,35 +1411,41 @@ class StorageManager {
 
   private loadState(): PlatformState {
     const seed = getInitialSeedData();
-    try {
-      if (!fs.existsSync(DATA_DIR)) {
-        fs.mkdirSync(DATA_DIR, { recursive: true });
-      }
-      if (fs.existsSync(DATA_FILE)) {
-        const raw = fs.readFileSync(DATA_FILE, 'utf-8');
-        const parsed = JSON.parse(raw);
-        // Ensure new Scale AI entities are populated if loading an existing older state file
-        if (!parsed.fineTuningJobs) parsed.fineTuningJobs = seed.fineTuningJobs;
-        if (!parsed.syntheticDatasets) parsed.syntheticDatasets = seed.syntheticDatasets;
-        if (!parsed.redTeamingRuns) parsed.redTeamingRuns = seed.redTeamingRuns;
-        if (!parsed.guardrails) parsed.guardrails = seed.guardrails;
-        return parsed;
-      }
-    } catch (e) {
-      console.warn('Could not read existing store file, falling back to seed:', e);
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    if (!fs.existsSync(DATA_FILE)) {
+      this.saveState(seed);
+      return seed;
     }
-    this.saveState(seed);
-    return seed;
+    let parsed;
+    try {
+      parsed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
+      if (!Array.isArray(parsed?.organizations)) throw new Error('it holds no organizations');
+    } catch (e) {
+      // Never replace a damaged store with seed data: that would silently delete every tenant's records.
+      throw new Error(`The store file ${DATA_FILE} cannot be read (${(e as Error).message}). Restore it from a backup or move it aside; it was left untouched.`);
+    }
+    // Ensure new Scale AI entities are populated if loading an existing older state file
+    if (!parsed.fineTuningJobs) parsed.fineTuningJobs = seed.fineTuningJobs;
+    if (!parsed.syntheticDatasets) parsed.syntheticDatasets = seed.syntheticDatasets;
+    if (!parsed.redTeamingRuns) parsed.redTeamingRuns = seed.redTeamingRuns;
+    if (!parsed.guardrails) parsed.guardrails = seed.guardrails;
+    return parsed;
   }
 
+  // Write a flushed temporary file and rename it over the store, so a crash leaves the old file or the new one, never half.
   private saveState(state: PlatformState) {
+    const tmp = `${DATA_FILE}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(state, null, 2), { encoding: 'utf-8', flush: true });
+    fs.renameSync(tmp, DATA_FILE);
+  }
+
+  // A failed write fails the caller, and memory goes back to what the disk holds.
+  private persist() {
     try {
-      if (!fs.existsSync(DATA_DIR)) {
-        fs.mkdirSync(DATA_DIR, { recursive: true });
-      }
-      fs.writeFileSync(DATA_FILE, JSON.stringify(state, null, 2), 'utf-8');
+      this.saveState(this.state);
     } catch (e) {
-      console.error('Failed to write store file:', e);
+      this.state = this.loadState();
+      throw e;
     }
   }
 
@@ -1449,7 +1455,7 @@ class StorageManager {
 
   public mutate<T>(fn: (state: PlatformState) => T): T {
     const result = fn(this.state);
-    this.saveState(this.state);
+    this.persist();
     return result;
   }
 
@@ -1461,7 +1467,7 @@ class StorageManager {
       timestamp: new Date().toISOString(),
     };
     this.state.auditLogs.unshift(auditEvent);
-    this.saveState(this.state);
+    this.persist();
     return auditEvent;
   }
 }

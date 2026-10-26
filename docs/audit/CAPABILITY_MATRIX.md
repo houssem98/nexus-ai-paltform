@@ -18,7 +18,7 @@ From section 2 of `docs/roadmap/NEXUS_WORLD_CLASS_ROADMAP.md`, made precise for 
 
 **Known by**: `read` means the whole handler was read on 2026-10-25; `searched` means the file was searched for API calls and fixed figures but not read in full; `test: <name>` names a test in `npm test` that checks the row; for a SIMULATED row that is the claim that it answers only in demo mode and says so.
 
-**True of every row, so not repeated below.** Identity comes from process-wide variables that any request header overwrites (`server.ts#let currentUserId = 'usr_admin';`, `server.ts#if (reqUser) currentUserId = reqUser;`), so even an UNVERIFIED route trusts whoever the last request claimed to be. No route checks a role. Every write goes through the non-atomic store (`server/storage.ts#fs.writeFileSync(DATA_FILE, JSON.stringify(state, null, 2), 'utf-8');`). L0 T4 and L1 own these.
+**True of every row, so not repeated below.** Identity comes from process-wide variables that any request header overwrites (`server.ts#let currentUserId = 'usr_admin';`, `server.ts#if (reqUser) currentUserId = reqUser;`), so even an UNVERIFIED route trusts whoever the last request claimed to be. No route checks a role. Every write goes through one store that rewrites the whole file, atomically since L1 T8 (`server/storage.ts#fs.renameSync(tmp, DATA_FILE);`), with no protection against two concurrent changes (S27). L0 T4 and L1 own these.
 
 ## API routes
 

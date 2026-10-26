@@ -39,7 +39,7 @@ Changes: `server/tenancy.ts` (new), `server.ts#const agents = state.agents.filte
 
 ### D3 · Store
 
-**Now.** Every change rewrites the whole JSON file in place (`server/storage.ts#fs.writeFileSync(DATA_FILE, JSON.stringify(state, null, 2), 'utf-8');`), a failed write is only logged, an unreadable file at boot is replaced by seed data (`server/storage.ts#this.saveState(seed);`), and git tracks the file, `data/nexus-store.json`, including deployment keys (finding S14). Every handler goes through one entry point, `server/storage.ts#public mutate<T>(fn: (state: PlatformState) => T): T {`, which keeps a change of store contained.
+**Now.** Since L1 T8 every change rewrites the whole JSON file atomically, through a flushed temporary file and a rename (`server/storage.ts#fs.renameSync(tmp, DATA_FILE);`); a failed write fails the call and memory returns to the disk's state (`server/storage.ts#this.state = this.loadState();`); an unreadable file at boot stops the server and is left untouched (`server/storage.ts#Never replace a damaged store with seed data`). Git still tracks the file, `data/nexus-store.json`, including deployment keys (finding S14). Every handler goes through one entry point, `server/storage.ts#public mutate<T>(fn: (state: PlatformState) => T): T {`, which keeps a change of store contained.
 
 **Decision, in two steps.** First, regardless of what L1 T9 chooses, L1 T8 makes the current file safe: write a temporary file, flush it, rename it over the old one; a failed write fails the request; an unreadable store stops boot with a clear error and leaves the file untouched; seed data is written only when no store exists. Then L1 T9, a human decision, picks the long-term store:
 

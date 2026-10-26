@@ -137,17 +137,20 @@ Test: L1 T13: a CSV cell starting with =, +, - or @ is neutralized
 
 ### S24 · persistence · high · confidence high
 Every change rewrites the whole store file in place, so a crash or a full disk during a write leaves a truncated file. A full disk is not hypothetical on this machine: the L0 T0 install failed with ENOSPC at 0 bytes free on 2026-10-25.
-Evidence: `server/storage.ts#fs.writeFileSync(DATA_FILE, JSON.stringify(state, null, 2), 'utf-8');`
+Fixed in L1 T8: a change goes to a flushed temporary file that is renamed over the store.
+Evidence: `server/storage.ts#fs.renameSync(tmp, DATA_FILE);`, `server/storage.test.ts#a simulated crash mid-write leaves the previous state readable`
 Test: L1 T8: a simulated crash mid-write leaves the previous state readable
 
 ### S25 · persistence · high · confidence high
 A store that cannot be parsed at boot is replaced by seed data and written over, so one truncated write turns into the loss of all data.
-Evidence: `server/storage.ts#console.warn('Could not read existing store file, falling back to seed:', e);`, `server/storage.ts#this.saveState(seed);`
+Fixed in L1 T8: boot stops with an error that names the file, and the file is left untouched.
+Evidence: `server/storage.ts#Never replace a damaged store with seed data`, `server/storage.test.ts#a corrupt store makes boot fail without modifying the file`
 Test: L1 T8: a corrupt store makes boot fail without modifying the file
 
 ### S26 · persistence · high · confidence high
 A failed write is only logged, so the request reports success for a change that was not saved and is lost on restart.
-Evidence: `server/storage.ts#console.error('Failed to write store file:', e);`
+Fixed in L1 T8 for synchronous routes: the write error reaches the request, which gets 500, and memory returns to what the disk holds. An async route whose write fails still gets no response (S29, L1 T11).
+Evidence: `server/storage.ts#this.state = this.loadState();`, `server/storage.test.ts#a write error returns 5xx`
 Test: L1 T8: a write error returns 5xx
 
 ### S27 · persistence · medium · confidence medium
