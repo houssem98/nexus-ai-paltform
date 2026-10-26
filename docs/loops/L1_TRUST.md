@@ -31,7 +31,7 @@ Deciding rule, fixed before T1 starts: T0 to T14 are ticked, the T1 coverage tab
 - [ ] T9 (human) Storage decision. needs: T8. Phase 1 asks for transactional storage (`roadmap/worldclassroadmap.md#Move shared platform state to transactional persistent storage.`). Options: keep the atomic JSON file, or move to `node:sqlite`, which the installed Node v25.8.1 provides (checked on 2026-10-25 by loading it with require). Also decide whether `data/nexus-store.json` stays tracked by git. Evidence: the decision lines in the Journal.
 - [ ] T10 Transactional store. needs: T9. Implement the T9 choice. Evidence: tests: two interleaved mutating requests lose no update; state survives a restart; the suite never touches `data/nexus-store.json`.
 - [ ] T11 Validation, errors, limits. needs: T4. Validate request bodies against schemas; error responses carry no stack traces or internals; enforce the deployment rate limit; justify or lower the body size limit. Evidence: tests: an invalid body gets 400 without internals; one call over the limit gets 429. Finding tests (`docs/audit/SECURITY_FINDINGS.md`): S17: one call over the rate limit gets 429; S29: a malformed dataset or graph fails its request with 4xx and the server keeps answering; S30: an invoice without a numeric, non-negative amount is refused before it runs; S33: agent output cannot overwrite the workflow input; S35: an invalid deployment status gets 400 and changes nothing; S37: a request body over the limit gets 413.
-- [ ] T12 Egress guard. needs: T0. A pure function `assertSafeEgress(url, resolve)` with an injectable resolver, to be wired into connectors in L5 T8, since no outbound call exists yet. Evidence: table tests blocking every egress case in the attack list of `docs/LOOP_CONVENTIONS.md`. Finding tests (`docs/audit/SECURITY_FINDINGS.md`): S19: assertSafeEgress blocks every egress case in the attack list.
+- [x] T12 Egress guard. needs: T0. A pure function `assertSafeEgress(url, resolve)` with an injectable resolver, to be wired into connectors in L5 T8, since no outbound call exists yet. Evidence: table tests blocking every egress case in the attack list of `docs/LOOP_CONVENTIONS.md`. Finding tests (`docs/audit/SECURITY_FINDINGS.md`): S19: assertSafeEgress blocks every egress case in the attack list.
 - [ ] T13 Audit integrity. needs: T4. Audit reads and exports are tenant-scoped; CSV export neutralizes cells that start with `=`, `+`, `-` or `@`; only server code paths append audit records. Evidence: tests for a cross-tenant export, a formula cell, and the absence of any route that writes caller-supplied audit text. Finding tests (`docs/audit/SECURITY_FINDINGS.md`): S20: every invented audit record is flagged simulated and absent from exports; S21: an audit record names the session user and that user's email; S22: a cross-tenant audit export returns none of the other org's events; S23: a CSV cell starting with =, +, - or @ is neutralized; S31: cancelling a finished execution gets 409 and writes no audit record; S32: editing a workflow graph writes an audit record naming the editor; S34: every CSV export row parses to nine cells, whatever the input.
 - [ ] T14 Independent check. needs: T3, T4, T5, T6, T7, T10, T11, T12, T13. A different model, in at least 3 independent runs, attacks identity, tenancy, keys, persistence and egress per the attack list; each finding becomes a failing test first. Evidence: findings quoted in the Journal; `npm run gate` exits 0.
 - [ ] T15 (human) Signoff. needs: T14. The human confirms no known critical issue is open or silently waived. Evidence: the signoff line in the Journal.
@@ -90,3 +90,20 @@ Deciding rule, fixed before T1 starts: T0 to T14 are ticked, the T1 coverage tab
   ```
 
   Direction: goal unchanged; an institution will not trust a store that can lose everything on one bad write, and that path is closed. Next: T12 egress guard (T2, the human's sign-in decision, still blocks T3 to T7; T9 storage decision is the human's and is now unblocked).
+- 2026-10-26 · L1/T12 · started T12
+- 2026-10-26 · L1/T12 · passed · gate green · commit see `git log --grep "loop(L1/T12)"` · `server/egress.ts` adds `assertSafeEgress(url, resolve)`: only http and https, and every address the host resolves to must be public (node:net BlockList over loopback, private, link-local, carrier-grade NAT, benchmarking, multicast, reserved and NAT64 ranges); it returns the checked addresses so the caller connects to them and not to a second lookup. `server/egress.test.ts` failed first (module missing), then one allowed-host case failed because a `::ffff:0:0/96` rule made BlockList block every IPv4 address; that rule was removed, since BlockList already checks IPv4-mapped addresses against the IPv4 rules. 22 blocked cases from the attack list plus mapped, unique-local, link-local, rebinding and empty-answer cases, localhost through the real resolver, and two allowed hosts. A guard on one URL cannot see redirects, so L5 T8 now requires every redirect hop to pass the guard and tests a redirect to a private address; S19 and `docs/architecture.md` say the guard is built and not yet wired. Evidence:
+
+  ```
+  $ node --import tsx --test server/egress.test.ts
+  ℹ pass 24
+  ℹ fail 0
+  $ npm run gate
+  graph-lint: clean
+  ℹ tests 57
+  ℹ pass 57
+  ℹ fail 0
+  gate-guard: clean · HEAD..working tree
+  gate exit 0
+  ```
+
+  Direction: goal unchanged; institutions run connectors inside their own networks, and this keeps a connector URL from reaching internal systems or cloud credentials once L5 wires it. Next: no agent task is open. T3 to T7, T11 and T13 wait on T2 (human, sign-in method) through T3 or T4; T10 waits on T9 (human, storage decision). Escalate both.

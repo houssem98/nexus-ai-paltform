@@ -112,7 +112,8 @@ Test: L1 T11: an invalid body gets 400 without internals
 
 ### S19 · outbound calls · medium · confidence high
 No outbound call exists yet, so there is no SSRF today, but connector base URLs are taken from the caller and stored, and until L0 T6 the architecture document and the connectors screen claimed a protection that does not exist; both now say it is not built. The risk arrives with real connectors in L5.
-Evidence: `server.ts#baseUrl: baseUrl || 'https://api.internal.enterprise/v1',`, `docs/architecture.md#SSRF Prevention`
+Guard built in L1 T12, not yet wired: no call exists to wire it into, and L5 T8 must route every connector call, and every redirect hop, through it.
+Evidence: `server.ts#baseUrl: baseUrl || 'https://api.internal.enterprise/v1',`, `docs/architecture.md#SSRF Prevention`, `server/egress.ts#export async function assertSafeEgress(`
 Test: L1 T12: assertSafeEgress blocks every egress case in the attack list
 
 ### S20 · audit integrity · medium · confidence high
