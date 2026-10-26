@@ -10,7 +10,11 @@ import { createServer } from 'vite';
 // and Vite serves files from the project root unless its fs.deny list says otherwise.
 test('the dev server does not serve the data store or the server source', async () => {
   const root = fileURLToPath(new URL('..', import.meta.url));
-  const vite = await createServer({ root, configFile: `${root}vite.config.ts`, server: { middlewareMode: true }, appType: 'spa', logLevel: 'silent' });
+  // No dependency pre-bundling: closing the server mid-bundle left a 10 MB deps_temp folder behind on every run.
+  const vite = await createServer({
+    root, configFile: `${root}vite.config.ts`, server: { middlewareMode: true }, appType: 'spa', logLevel: 'silent',
+    optimizeDeps: { noDiscovery: true },
+  });
   const server = express().use(vite.middlewares).listen(0, '127.0.0.1');
   await once(server, 'listening');
   try {

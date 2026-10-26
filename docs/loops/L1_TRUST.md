@@ -175,3 +175,4 @@ Deciding rule, fixed before T1 starts: T0 to T14 are ticked, the T1 coverage tab
   ```
 
   Direction: goal unchanged; least privilege by role is the next thing an institution's access review checks after tenant isolation. Next: T6 approval enforcement.
+- 2026-10-26 · maintenance, not a tick · The disk fell to 76 MB. The cause was the gate itself: `server/dev-server.test.ts` closed Vite while its dependency pre-bundler ran, leaving a 10 MB `node_modules/.vite/deps_temp_*` folder per run (22 found). The test now turns pre-bundling off (`server/dev-server.test.ts#optimizeDeps: { noDiscovery: true },`), with every assertion unchanged; a gate run afterwards left 0 such folders. The 22 folders and the loop's own temporary test directories were deleted (regenerable caches the loop made); free space went from 300 MB to 486 MB. Gate green, 74 tests. Next: T6 approval enforcement.
