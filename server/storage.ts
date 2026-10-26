@@ -9,6 +9,7 @@ export interface User {
   role: 'org_admin' | 'workspace_admin' | 'builder' | 'operator' | 'evaluator' | 'viewer';
   orgId: string;
   workspaceId: string;
+  passwordHash?: string;
 }
 
 export interface Organization {

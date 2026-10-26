@@ -133,7 +133,7 @@ export const Header: React.FC<HeaderProps> = ({
             <select
               value={currentUser?.id || ''}
               onChange={(e) => onSwitchUser(e.target.value)}
-              title="Switch user role context"
+              title="Sign out and sign in as another user of this organization"
               className="bg-white/[0.04] text-slate-300 hover:text-white text-xs rounded-lg px-2.5 py-1 border border-white/[0.08] hover:border-white/[0.16] focus:outline-none cursor-pointer pr-6 appearance-none"
             >
               {availableUsers.map((u) => (

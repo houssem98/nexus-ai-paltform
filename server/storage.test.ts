@@ -16,6 +16,7 @@ process.chdir(dir);
 const storeFile = path.join(dir, 'data', 'nexus-store.json');
 const { db } = await import('./storage');
 const { app } = await import('../server');
+const { createSession, SESSION_COOKIE } = await import('./auth');
 
 const server = app.listen(0);
 await once(server, 'listening');
@@ -65,7 +66,7 @@ test('a write error returns 5xx', async () => {
   try {
     const res = await fetch(base + '/api/v1/settings', {
       method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', cookie: `${SESSION_COOKIE}=${createSession(db.getState().users[0])}` },
       body: JSON.stringify({ dataRetentionDays: before + 1 }),
     });
     status = res.status;

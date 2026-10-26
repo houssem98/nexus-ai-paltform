@@ -2,8 +2,9 @@ import express, { Request, Response, NextFunction } from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { db, simulatedScope } from './server/storage';
+import { db, simulatedScope, type User } from './server/storage';
 import { validateGraph, runWorkflowExecution, executeAgentDirectly } from './server/engine';
+import { bootstrapAdmin, createSession, endSession, publicUser, readSession, sessionCookie, verifyPassword } from './server/auth';
 
 dotenv.config();
 
@@ -15,21 +16,18 @@ const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: '10mb' }));
 
-// Tenant Context Middleware
-let currentUserId = 'usr_admin';
-let currentOrgId = 'org_nexus_enterprises';
-let currentWorkspaceId = 'ws_enterprise_ops';
-
-app.use((req: Request, res: Response, next: NextFunction) => {
-  // Allow client headers to switch context cleanly
-  const reqOrg = req.headers['x-org-id'] as string;
-  const reqWs = req.headers['x-workspace-id'] as string;
-  const reqUser = req.headers['x-user-id'] as string;
-
-  if (reqOrg) currentOrgId = reqOrg;
-  if (reqWs) currentWorkspaceId = reqWs;
-  if (reqUser) currentUserId = reqUser;
-
+// Identity comes from the session cookie on every request, into res.locals; identity headers are ignored.
+// Open without a session: signing in, and deployment calls, which authenticate with their API key.
+app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+  if (req.path === '/v1/auth/login' || /^\/v1\/deployments\/[^/]+\/execute$/.test(req.path)) return next();
+  const found = readSession(req.headers.cookie);
+  const user = found && db.getState().users.find((u) => u.id === found.session.userId);
+  if (!found || !user) return res.status(401).json({ error: 'Sign in required.' });
+  res.locals.session = found;
+  res.locals.user = user;
+  res.locals.userId = user.id;
+  res.locals.orgId = user.orgId;
+  res.locals.workspaceId = found.session.workspaceId;
   next();
 });
 
@@ -41,53 +39,83 @@ const demoOnly = (req: Request, res: Response, next: NextFunction) => {
 };
 
 // ==================== AUTH & CONTEXT ====================
+app.post('/api/v1/auth/login', (req: Request, res: Response) => {
+  const { email, password } = req.body ?? {};
+  const user = typeof email === 'string' ? db.getState().users.find((u) => u.email.toLowerCase() === email.toLowerCase()) : undefined;
+  if (!verifyPassword(String(password ?? ''), user?.passwordHash) || !user) {
+    return res.status(401).json({ error: 'Wrong email or password.' });
+  }
+  res.setHeader('Set-Cookie', sessionCookie(createSession(user)));
+  db.logAudit({
+    orgId: user.orgId,
+    workspaceId: user.workspaceId,
+    userId: user.id,
+    userEmail: user.email,
+    action: 'USER_SIGNED_IN',
+    resourceType: 'security',
+    resourceId: user.id,
+    details: 'Signed in with a password.',
+    ipAddress: req.ip || '127.0.0.1',
+  });
+  res.json({ user: publicUser(user) });
+});
+
+app.post('/api/v1/auth/logout', (req: Request, res: Response) => {
+  endSession(res.locals.session.token);
+  res.setHeader('Set-Cookie', sessionCookie('', 0));
+  res.json({ success: true });
+});
+
 app.get('/api/v1/me', (req: Request, res: Response) => {
   const state = db.getState();
-  const user = state.users.find((u) => u.id === currentUserId) || state.users[0];
-  const org = state.organizations.find((o) => o.id === currentOrgId) || state.organizations[0];
-  const workspace = state.workspaces.find((w) => w.id === currentWorkspaceId) || state.workspaces[0];
+  const user: User = res.locals.user;
 
   res.json({
-    user,
-    organization: org,
-    workspace,
-    availableWorkspaces: state.workspaces.filter((w) => w.orgId === org.id),
-    availableUsers: state.users,
+    user: publicUser(user),
+    organization: state.organizations.find((o) => o.id === user.orgId),
+    workspace: state.workspaces.find((w) => w.id === res.locals.workspaceId),
+    availableWorkspaces: state.workspaces.filter((w) => w.orgId === user.orgId),
+    availableUsers: state.users.filter((u) => u.orgId === user.orgId).map(publicUser),
     demoMode: state.settings.demoMode,
   });
 });
 
+// Only the active workspace changes, and only to one of the user's own org; switching user is signing out and in.
 app.post('/api/v1/auth/switch-context', (req: Request, res: Response) => {
   const { userId, workspaceId, orgId } = req.body;
-  if (userId) currentUserId = userId;
-  if (workspaceId) currentWorkspaceId = workspaceId;
-  if (orgId) currentOrgId = orgId;
+  const user: User = res.locals.user;
+  const workspace = db.getState().workspaces.find((w) => w.id === workspaceId && w.orgId === user.orgId);
+  if ((userId !== undefined && userId !== user.id) || (orgId !== undefined && orgId !== user.orgId) || (workspaceId !== undefined && !workspace)) {
+    return res.status(403).json({ error: 'You can switch only to a workspace of your own organization.' });
+  }
+  const session = res.locals.session.session;
+  if (workspace) session.workspaceId = workspace.id;
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
-    userEmail: 'user-session@nexus.internal',
+    orgId: user.orgId,
+    workspaceId: session.workspaceId,
+    userId: user.id,
+    userEmail: user.email,
     action: 'CONTEXT_SWITCHED',
     resourceType: 'security',
-    resourceId: currentWorkspaceId,
-    details: `Switched active workspace to ${currentWorkspaceId} with role context.`,
+    resourceId: session.workspaceId,
+    details: `Switched active workspace to ${session.workspaceId}.`,
     ipAddress: req.ip || '127.0.0.1',
   });
 
-  res.json({ success: true, currentUserId, currentWorkspaceId, currentOrgId });
+  res.json({ success: true, currentUserId: user.id, currentWorkspaceId: session.workspaceId, currentOrgId: user.orgId });
 });
 
 // ==================== AGENTS ====================
 app.get('/api/v1/agents', (req: Request, res: Response) => {
   const state = db.getState();
-  const agents = state.agents.filter((a) => a.orgId === currentOrgId);
+  const agents = state.agents.filter((a) => a.orgId === res.locals.orgId);
   res.json({ agents });
 });
 
 app.get('/api/v1/agents/:id', (req: Request, res: Response) => {
   const state = db.getState();
-  const agent = state.agents.find((a) => a.id === req.params.id && a.orgId === currentOrgId);
+  const agent = state.agents.find((a) => a.id === req.params.id && a.orgId === res.locals.orgId);
   if (!agent) {
     return res.status(404).json({ error: 'Agent not found' });
   }
@@ -100,8 +128,8 @@ app.post('/api/v1/agents', (req: Request, res: Response) => {
     const id = `agent_${Date.now()}`;
     const agent = {
       id,
-      orgId: currentOrgId,
-      workspaceId: currentWorkspaceId,
+      orgId: res.locals.orgId,
+      workspaceId: res.locals.workspaceId,
       name: name || 'Custom Enterprise Agent',
       description: description || 'Autonomous multi-step business logic agent',
       department: department || 'Operations',
@@ -122,7 +150,7 @@ app.post('/api/v1/agents', (req: Request, res: Response) => {
           inputSchema: { query: 'string' },
           outputSchema: { result: 'string', verified: 'boolean' },
           createdAt: new Date().toISOString(),
-          createdBy: currentUserId,
+          createdBy: res.locals.userId,
           changelog: 'Initial version created via Agent Studio',
         },
       ],
@@ -132,9 +160,9 @@ app.post('/api/v1/agents', (req: Request, res: Response) => {
   });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'user@nexus.internal',
     action: 'AGENT_CREATED',
     resourceType: 'agent',
@@ -149,7 +177,7 @@ app.post('/api/v1/agents', (req: Request, res: Response) => {
 app.put('/api/v1/agents/:id', (req: Request, res: Response) => {
   const { name, description, department, model, systemPrompt, thinkingMode, thinkingLevel, temperature, maxSteps, tools } = req.body;
   const updated = db.mutate((state) => {
-    const agent = state.agents.find((a) => a.id === req.params.id && a.orgId === currentOrgId);
+    const agent = state.agents.find((a) => a.id === req.params.id && a.orgId === res.locals.orgId);
     if (!agent) return null;
 
     if (name) agent.name = name;
@@ -173,9 +201,9 @@ app.put('/api/v1/agents/:id', (req: Request, res: Response) => {
   if (!updated) return res.status(404).json({ error: 'Agent not found' });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'user@nexus.internal',
     action: 'AGENT_UPDATED',
     resourceType: 'agent',
@@ -204,13 +232,13 @@ app.post('/api/v1/agents/:id/test', async (req: Request, res: Response) => {
 // ==================== WORKFLOWS ====================
 app.get('/api/v1/workflows', (req: Request, res: Response) => {
   const state = db.getState();
-  const workflows = state.workflows.filter((w) => w.orgId === currentOrgId);
+  const workflows = state.workflows.filter((w) => w.orgId === res.locals.orgId);
   res.json({ workflows });
 });
 
 app.get('/api/v1/workflows/:id', (req: Request, res: Response) => {
   const state = db.getState();
-  const workflow = state.workflows.find((w) => w.id === req.params.id && w.orgId === currentOrgId);
+  const workflow = state.workflows.find((w) => w.id === req.params.id && w.orgId === res.locals.orgId);
   if (!workflow) {
     return res.status(404).json({ error: 'Workflow not found' });
   }
@@ -223,8 +251,8 @@ app.post('/api/v1/workflows', (req: Request, res: Response) => {
     const id = `wf_${Date.now()}`;
     const wf = {
       id,
-      orgId: currentOrgId,
-      workspaceId: currentWorkspaceId,
+      orgId: res.locals.orgId,
+      workspaceId: res.locals.workspaceId,
       name: name || 'New Orchestration Flow',
       description: description || 'Visual multi-agent pipeline',
       department: department || 'Operations',
@@ -236,7 +264,7 @@ app.post('/api/v1/workflows', (req: Request, res: Response) => {
         {
           version: 1,
           createdAt: new Date().toISOString(),
-          createdBy: currentUserId,
+          createdBy: res.locals.userId,
           status: 'draft' as const,
           nodes: nodes || [
             { id: 'start_1', type: 'start' as const, label: 'Trigger Input', x: 100, y: 150, config: {} },
@@ -251,9 +279,9 @@ app.post('/api/v1/workflows', (req: Request, res: Response) => {
   });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'user@nexus.internal',
     action: 'WORKFLOW_CREATED',
     resourceType: 'workflow',
@@ -268,7 +296,7 @@ app.post('/api/v1/workflows', (req: Request, res: Response) => {
 app.put('/api/v1/workflows/:id', (req: Request, res: Response) => {
   const { name, description, department, nodes, edges } = req.body;
   const updated = db.mutate((state) => {
-    const idx = state.workflows.findIndex((w) => w.id === req.params.id && w.orgId === currentOrgId);
+    const idx = state.workflows.findIndex((w) => w.id === req.params.id && w.orgId === res.locals.orgId);
     if (idx === -1) return null;
 
     const wf = state.workflows[idx];
@@ -300,7 +328,7 @@ app.post('/api/v1/workflows/:id/validate', (req: Request, res: Response) => {
 app.post('/api/v1/workflows/:id/execute', async (req: Request, res: Response) => {
   const { input, trigger } = req.body;
   const state = db.getState();
-  const workflow = state.workflows.find((w) => w.id === req.params.id && w.orgId === currentOrgId);
+  const workflow = state.workflows.find((w) => w.id === req.params.id && w.orgId === res.locals.orgId);
   if (!workflow) {
     return res.status(404).json({ error: 'Workflow not found' });
   }
@@ -308,8 +336,8 @@ app.post('/api/v1/workflows/:id/execute', async (req: Request, res: Response) =>
   const executionId = `exec_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
   const executionRecord = {
     id: executionId,
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
     workflowId: workflow.id,
     workflowName: workflow.name,
     workflowVersion: workflow.activeVersion,
@@ -325,9 +353,9 @@ app.post('/api/v1/workflows/:id/execute', async (req: Request, res: Response) =>
   });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'user@nexus.internal',
     action: 'WORKFLOW_EXECUTED',
     resourceType: 'execution',
@@ -378,7 +406,7 @@ app.get('/api/v1/analytics/trends', (req: Request, res: Response) => {
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
     const matchingReal = state.executions.filter((e) => {
-      const matchOrg = e.orgId === currentOrgId;
+      const matchOrg = e.orgId === res.locals.orgId;
       const matchAgent = agentId === 'all' || e.agentId === agentId;
       const started = e.startedAt ? e.startedAt.split('T')[0] : '';
       return matchOrg && matchAgent && started === dateStr && (simulated || !e.simulated);
@@ -469,13 +497,13 @@ app.get('/api/v1/analytics/trends', (req: Request, res: Response) => {
 // ==================== EXECUTIONS ====================
 app.get('/api/v1/executions', (req: Request, res: Response) => {
   const state = db.getState();
-  const executions = state.executions.filter((e) => e.orgId === currentOrgId);
+  const executions = state.executions.filter((e) => e.orgId === res.locals.orgId);
   res.json({ executions });
 });
 
 app.get('/api/v1/executions/:id', (req: Request, res: Response) => {
   const state = db.getState();
-  const execution = state.executions.find((e) => e.id === req.params.id && e.orgId === currentOrgId);
+  const execution = state.executions.find((e) => e.id === req.params.id && e.orgId === res.locals.orgId);
   if (!execution) {
     return res.status(404).json({ error: 'Execution not found' });
   }
@@ -492,7 +520,7 @@ app.post('/api/v1/executions/:id/approve', async (req: Request, res: Response) =
     if (approval) {
       approval.status = decision === 'approve' ? 'approved' : 'rejected';
       approval.decisionNotes = notes || 'Authorized in Command Center';
-      approval.decidedBy = currentUserId;
+      approval.decidedBy = res.locals.userId;
       approval.decidedAt = new Date().toISOString();
     }
 
@@ -503,7 +531,7 @@ app.post('/api/v1/executions/:id/approve', async (req: Request, res: Response) =
         ...exec.output,
         approvalGranted: true,
         cfoSignOff: 'GRANTED',
-        decidedBy: currentUserId,
+        decidedBy: res.locals.userId,
         finalLedgerPost: 'COMMITTED',
       };
     } else {
@@ -517,9 +545,9 @@ app.post('/api/v1/executions/:id/approve', async (req: Request, res: Response) =
   if (!execution) return res.status(404).json({ error: 'Execution not found' });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'approver@nexus.internal',
     action: decision === 'approve' ? 'APPROVAL_GRANTED' : 'APPROVAL_REJECTED',
     resourceType: 'approval',
@@ -553,9 +581,9 @@ app.post('/api/v1/executions/:id/cancel', (req: Request, res: Response) => {
   if (!execution) return res.status(404).json({ error: 'Execution not found' });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'operator@nexus.internal',
     action: 'EXECUTION_CANCELLED',
     resourceType: 'execution',
@@ -570,7 +598,7 @@ app.post('/api/v1/executions/:id/cancel', (req: Request, res: Response) => {
 // ==================== KNOWLEDGE & CONTEXT ====================
 app.get('/api/v1/knowledge', (req: Request, res: Response) => {
   const state = db.getState();
-  const documents = state.knowledge.filter((k) => k.orgId === currentOrgId);
+  const documents = state.knowledge.filter((k) => k.orgId === res.locals.orgId);
   res.json({ documents });
 });
 
@@ -588,8 +616,8 @@ app.post('/api/v1/knowledge', (req: Request, res: Response) => {
   const doc = db.mutate((state) => {
     const newDoc = {
       id: `kb_${Date.now()}`,
-      orgId: currentOrgId,
-      workspaceId: currentWorkspaceId,
+      orgId: res.locals.orgId,
+      workspaceId: res.locals.workspaceId,
       title: title || 'Untitled Enterprise Policy',
       category: category || 'General Knowledge',
       content: content || '',
@@ -604,9 +632,9 @@ app.post('/api/v1/knowledge', (req: Request, res: Response) => {
   });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'user@nexus.internal',
     action: 'KNOWLEDGE_INGESTED',
     resourceType: 'knowledge',
@@ -654,9 +682,9 @@ app.delete('/api/v1/knowledge/:id', (req: Request, res: Response) => {
   if (!deleted) return res.status(404).json({ error: 'Document not found' });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'user@nexus.internal',
     action: 'KNOWLEDGE_DELETED',
     resourceType: 'knowledge',
@@ -679,9 +707,9 @@ app.post('/api/v1/knowledge/:id/reindex', (req: Request, res: Response) => {
   if (!doc) return res.status(404).json({ error: 'Document not found' });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'user@nexus.internal',
     action: 'VECTOR_INDEX_OPTIMIZED',
     resourceType: 'knowledge',
@@ -705,9 +733,9 @@ app.post('/api/v1/integrations/:id/test', demoOnly, (req: Request, res: Response
   if (!integration) return res.status(404).json({ error: 'Integration not found' });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'user@nexus.internal',
     action: 'INTEGRATION_TESTED',
     resourceType: 'integration',
@@ -747,9 +775,9 @@ app.post('/api/v1/integrations', (req: Request, res: Response) => {
   });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'builder@nexus.internal',
     action: 'INTEGRATION_CREATED',
     resourceType: 'integration',
@@ -772,9 +800,9 @@ app.delete('/api/v1/integrations/:id', (req: Request, res: Response) => {
   if (!deleted) return res.status(404).json({ error: 'Integration not found' });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'builder@nexus.internal',
     action: 'INTEGRATION_DELETED',
     resourceType: 'integration',
@@ -800,8 +828,8 @@ app.post('/api/v1/evaluations/datasets', (req: Request, res: Response) => {
     const id = `ds_${Date.now()}`;
     const ds = {
       id,
-      orgId: currentOrgId,
-      workspaceId: currentWorkspaceId,
+      orgId: res.locals.orgId,
+      workspaceId: res.locals.workspaceId,
       name: name || 'Custom Enterprise Test Suite',
       description: description || 'User-defined ground-truth evaluation benchmark',
       cases: cases && cases.length > 0 ? cases : [
@@ -825,9 +853,9 @@ app.post('/api/v1/evaluations/datasets', (req: Request, res: Response) => {
   });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'evaluator@nexus.internal',
     action: 'EVALUATION_DATASET_CREATED',
     resourceType: 'agent',
@@ -856,8 +884,8 @@ app.post('/api/v1/evaluations/runs', demoOnly, async (req: Request, res: Respons
 
   const runRecord = {
     id: `eval_run_${Date.now()}`,
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
     datasetId: dataset.id,
     datasetName: dataset.name,
     targetType: targetType || 'agent',
@@ -882,9 +910,9 @@ app.post('/api/v1/evaluations/runs', demoOnly, async (req: Request, res: Respons
   });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'evaluator@nexus.internal',
     action: 'EVALUATION_COMPLETED',
     resourceType: 'agent',
@@ -970,8 +998,8 @@ app.post('/api/v1/deployments', (req: Request, res: Response) => {
     const key = `nx_${environment || 'prod'}_live_${randomHex}${Math.random().toString(36).substring(2, 8)}`;
     const dep = {
       id,
-      orgId: currentOrgId,
-      workspaceId: currentWorkspaceId,
+      orgId: res.locals.orgId,
+      workspaceId: res.locals.workspaceId,
       workflowId: workflow.id,
       workflowName: workflow.name,
       workflowVersion: workflow.activeVersion,
@@ -989,9 +1017,9 @@ app.post('/api/v1/deployments', (req: Request, res: Response) => {
   });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'operator@nexus.internal',
     action: 'DEPLOYMENT_PUBLISHED',
     resourceType: 'deployment',
@@ -1015,9 +1043,9 @@ app.patch('/api/v1/deployments/:id/status', (req: Request, res: Response) => {
   if (!deployment) return res.status(404).json({ error: 'Deployment not found' });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'operator@nexus.internal',
     action: `DEPLOYMENT_${(status as string).toUpperCase()}`,
     resourceType: 'deployment',
@@ -1040,9 +1068,9 @@ app.delete('/api/v1/deployments/:id', (req: Request, res: Response) => {
   if (!deleted) return res.status(404).json({ error: 'Deployment not found' });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'operator@nexus.internal',
     action: 'DEPLOYMENT_DELETED',
     resourceType: 'deployment',
@@ -1164,8 +1192,8 @@ app.post('/api/v1/audit-events/simulate', demoOnly, (req: Request, res: Response
   }
 
   const newLog = db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
     userId,
     userEmail,
     action,
@@ -1237,9 +1265,9 @@ app.patch('/api/v1/settings', (req: Request, res: Response) => {
   });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'admin@nexus.internal',
     action: 'SECURITY_POLICY_UPDATED',
     resourceType: 'security',
@@ -1317,8 +1345,8 @@ app.post('/api/v1/fine-tuning', demoOnly, (req: Request, res: Response) => {
     const id = `ft_job_${Date.now()}`;
     const job = {
       id,
-      orgId: currentOrgId,
-      workspaceId: currentWorkspaceId,
+      orgId: res.locals.orgId,
+      workspaceId: res.locals.workspaceId,
       name: name || 'Custom LoRA Alignment Job',
       baseModel: baseModel || 'gemini-4-argon',
       method: (method || 'lora') as 'lora' | 'qlora' | 'full_sft' | 'dpo',
@@ -1356,9 +1384,9 @@ app.post('/api/v1/fine-tuning', demoOnly, (req: Request, res: Response) => {
   });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'engineer@nexus.internal',
     action: 'MODEL_FINETUNING_COMPLETED',
     resourceType: 'agent',
@@ -1400,9 +1428,9 @@ app.post('/api/v1/fine-tuning/:id/deploy', demoOnly, (req: Request, res: Respons
   });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'platform-lead@nexus.internal',
     action: 'DEPLOYMENT_PUBLISHED',
     resourceType: 'deployment',
@@ -1439,8 +1467,8 @@ app.post('/api/v1/data-foundry/generate', demoOnly, (req: Request, res: Response
     const id = `syn_${Date.now()}`;
     const newDs = {
       id,
-      orgId: currentOrgId,
-      workspaceId: currentWorkspaceId,
+      orgId: res.locals.orgId,
+      workspaceId: res.locals.workspaceId,
       name: name || `${domain || 'Enterprise'} Synthetic Instruction Corpus`,
       domain: domain || 'Cross-Domain Enterprise',
       recordCount: numCount,
@@ -1472,9 +1500,9 @@ app.post('/api/v1/data-foundry/generate', demoOnly, (req: Request, res: Response
   });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'data-scientist@nexus.internal',
     action: 'SYNTHETIC_DATA_GENERATED',
     resourceType: 'knowledge',
@@ -1532,8 +1560,8 @@ app.post('/api/v1/red-teaming/execute', demoOnly, (req: Request, res: Response) 
     const breached = 2;
     const run = {
       id,
-      orgId: currentOrgId,
-      workspaceId: currentWorkspaceId,
+      orgId: res.locals.orgId,
+      workspaceId: res.locals.workspaceId,
       targetModel: targetModel || 'gemini-4-argon (Enterprise AP Auditor)',
       attackVector: attackVector || 'Automated Adversarial Jailbreak & Injection Suite',
       status: 'passed' as const,
@@ -1566,9 +1594,9 @@ app.post('/api/v1/red-teaming/execute', demoOnly, (req: Request, res: Response) 
   });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'redteam@nexus.internal',
     action: 'ADVERSARIAL_REDTEAM_EXECUTED',
     resourceType: 'security',
@@ -1631,9 +1659,9 @@ app.patch('/api/v1/red-teaming/guardrails', demoOnly, (req: Request, res: Respon
   });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'secops@nexus.internal',
     action: 'GUARDRAILS_POLICY_UPDATED',
     resourceType: 'security',
@@ -2118,9 +2146,9 @@ app.post('/api/v1/knowledge/reindex-all', (req: Request, res: Response) => {
   });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'user@nexus.internal',
     action: 'VECTOR_INDEX_FULL_REBUILD',
     resourceType: 'knowledge',
@@ -2155,9 +2183,9 @@ app.post('/api/v1/governance/compliance-scan', demoOnly, (req: Request, res: Res
   };
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'security@nexus.internal',
     action: 'SECURITY_AUDIT_EXECUTED',
     resourceType: 'security',
@@ -2187,9 +2215,9 @@ app.post('/api/v1/agents/:id/duplicate', (req: Request, res: Response) => {
   });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'user@nexus.internal',
     action: 'AGENT_DUPLICATED',
     resourceType: 'agent',
@@ -2219,9 +2247,9 @@ app.post('/api/v1/workflows/:id/duplicate', (req: Request, res: Response) => {
   });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'user@nexus.internal',
     action: 'WORKFLOW_DUPLICATED',
     resourceType: 'workflow',
@@ -2240,9 +2268,9 @@ app.post('/api/v1/integrations/:id/sync', demoOnly, (req: Request, res: Response
   if (!integration) return res.status(404).json({ error: 'Integration not found' });
 
   db.logAudit({
-    orgId: currentOrgId,
-    workspaceId: currentWorkspaceId,
-    userId: currentUserId,
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
     userEmail: 'user@nexus.internal',
     action: 'INTEGRATION_SYNCED',
     resourceType: 'integration',
@@ -2263,6 +2291,12 @@ app.post('/api/v1/integrations/:id/sync', demoOnly, (req: Request, res: Response
 
 // ==================== VITE MIDDLEWARE SETUP ====================
 async function startServer() {
+  const admin = db.mutate((s) => bootstrapAdmin(s.users, process.env.NEXUS_ADMIN_PASSWORD));
+  if (admin) console.log(`Set the sign-in password of ${admin.email} from NEXUS_ADMIN_PASSWORD.`);
+  else if (!db.getState().users.some((u) => u.passwordHash)) {
+    console.warn('No user can sign in yet: start the server once with NEXUS_ADMIN_PASSWORD set.');
+  }
+
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({

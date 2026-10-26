@@ -5,24 +5,10 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
+// Who is calling comes from the HttpOnly session cookie the browser sends with every same-origin request.
 class ApiClient {
-  private orgId: string = 'org_nexus_enterprises';
-  private workspaceId: string = 'ws_enterprise_ops';
-  private userId: string = 'usr_admin';
-
-  public setContext(orgId: string, workspaceId: string, userId: string) {
-    this.orgId = orgId;
-    this.workspaceId = workspaceId;
-    this.userId = userId;
-  }
-
   private getHeaders(): HeadersInit {
-    return {
-      'Content-Type': 'application/json',
-      'x-org-id': this.orgId,
-      'x-workspace-id': this.workspaceId,
-      'x-user-id': this.userId,
-    };
+    return { 'Content-Type': 'application/json' };
   }
 
   public async get<T>(url: string): Promise<T> {
@@ -32,7 +18,7 @@ class ApiClient {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error(err.error || `HTTP ${res.status}`);
+      throw Object.assign(new Error(err.error || `HTTP ${res.status}`), { status: res.status });
     }
     return res.json();
   }
@@ -45,7 +31,7 @@ class ApiClient {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error(err.error || `HTTP ${res.status}`);
+      throw Object.assign(new Error(err.error || `HTTP ${res.status}`), { status: res.status });
     }
     return res.json();
   }
@@ -58,7 +44,7 @@ class ApiClient {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error(err.error || `HTTP ${res.status}`);
+      throw Object.assign(new Error(err.error || `HTTP ${res.status}`), { status: res.status });
     }
     return res.json();
   }
@@ -71,7 +57,7 @@ class ApiClient {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error(err.error || `HTTP ${res.status}`);
+      throw Object.assign(new Error(err.error || `HTTP ${res.status}`), { status: res.status });
     }
     return res.json();
   }
@@ -83,7 +69,7 @@ class ApiClient {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error(err.error || `HTTP ${res.status}`);
+      throw Object.assign(new Error(err.error || `HTTP ${res.status}`), { status: res.status });
     }
     return res.json();
   }

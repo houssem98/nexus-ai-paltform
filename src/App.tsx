@@ -19,6 +19,7 @@ import { RedTeamingSecurityStudio } from './components/RedTeamingSecurityStudio'
 import { RoadmapViewer } from './components/RoadmapViewer';
 import { SystemVerifierModal } from './components/SystemVerifierModal';
 import { ToastProvider } from './context/ToastContext';
+import { SignIn } from './components/SignIn';
 import { Loader2 } from 'lucide-react';
 
 export default function App() {
@@ -28,6 +29,8 @@ export default function App() {
   const [roadmapOpen, setRoadmapOpen] = useState(false);
   const [verifierOpen, setVerifierOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  // null while signed in; otherwise the email the sign-in form starts with.
+  const [signInEmail, setSignInEmail] = useState<string | null>(null);
 
   // Active entity selection for breadcrumbs and focused IDE views
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>('');
@@ -85,6 +88,7 @@ export default function App() {
       setAuditLogs(audRes.auditLogs || []);
       setApprovals(appRes.approvals || []);
     } catch (err) {
+      if ((err as { status?: number }).status === 401) setSignInEmail('');
       console.error('Failed to load platform data:', err);
     } finally {
       setLoading(false);
@@ -105,13 +109,15 @@ export default function App() {
     }
   };
 
+  // Acting as another user means signing in as that user; the server never switches users.
   const handleSwitchUser = async (userId: string) => {
+    const email = me?.availableUsers?.find((u: any) => u.id === userId)?.email ?? '';
     try {
-      await api.post('/api/v1/auth/switch-context', { userId });
-      loadPlatformData();
+      await api.post('/api/v1/auth/logout');
     } catch (e) {
       console.error(e);
     }
+    setSignInEmail(email);
   };
 
   const handleApproveExecution = async (executionId: string, decision: 'approve' | 'reject') => {
@@ -163,6 +169,19 @@ export default function App() {
     activeEntityName = 'Data Engine & RLHF Foundry';
   } else if (currentTab === 'red_teaming') {
     activeEntityName = 'Scale SEAL Safety Benchmark';
+  }
+
+  if (signInEmail !== null) {
+    return (
+      <SignIn
+        email={signInEmail}
+        onSignedIn={() => {
+          setSignInEmail(null);
+          setLoading(true);
+          loadPlatformData();
+        }}
+      />
+    );
   }
 
   if (loading) {

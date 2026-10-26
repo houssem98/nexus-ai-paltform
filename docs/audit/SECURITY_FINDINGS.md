@@ -22,17 +22,20 @@ L0 T4, written 2026-10-26 against commit ac0984b, from the code read for `docs/a
 
 ### S1 · authentication · critical · confidence high
 No authentication. Every request's identity comes from headers the client chooses, so any client can act as any user, including `org_admin`.
-Evidence: `server.ts#const reqUser = req.headers['x-user-id'] as string;`, `src/lib/api.ts#'x-user-id': this.userId,`
+Fixed in L1 T3: every API route except sign-in and key-authenticated deployment calls answers 401 without a session cookie, and identity headers are ignored.
+Evidence: `server.ts#if (!found || !user) return res.status(401).json({ error: 'Sign in required.' });`, `server/tenancy.test.ts#an unauthenticated request gets 401`
 Test: L1 T3: an unauthenticated request gets 401
 
 ### S2 · authentication · critical · confidence high
 Identity is stored in process-wide variables, so one client's request changes the identity used for every other client's requests until someone sends another header.
-Evidence: `server.ts#let currentUserId = 'usr_admin';`, `server.ts#if (reqUser) currentUserId = reqUser;`
+Fixed in L1 T3: identity is resolved per request from the session into `res.locals`; no module-level identity remains.
+Evidence: `server.ts#res.locals.userId = user.id;`, `server/tenancy.test.ts#two interleaved requests as different users each see their own context`
 Test: L1 T3: two interleaved requests as different users each see their own context
 
 ### S3 · authentication · high · confidence high
 Context switching accepts any org, workspace and user, with no membership check.
-Evidence: `server.ts#if (orgId) currentOrgId = orgId;`, `server.ts#if (userId) currentUserId = userId;`
+Fixed in L1 T3: only the session's workspace changes, and only to one of the user's own org; a user or org switch gets 403.
+Evidence: `server.ts#You can switch only to a workspace of your own organization.`, `server/tenancy.test.ts#switching into a foreign org gets 403`
 Test: L1 T3: switching into a foreign org gets 403
 
 ### S4 · authentication · high · confidence high
@@ -41,8 +44,8 @@ Evidence: `server/storage.ts#role: 'org_admin'`, `server.ts#state.settings.demoM
 Test: L1 T5: a table of role by route returns 2xx or 403 as the permission table says
 
 ### S5 · authentication · high · confidence high
-Anyone can decide an approval, a second decision overwrites the first, a finished execution can be approved, and the decider recorded is whoever the global variable names.
-Evidence: `server.ts#approval.decidedBy = currentUserId;`, `server.ts#const exec = state.executions.find((e) => e.id === req.params.id);`, `server.ts#cfoSignOff: 'GRANTED',`
+Anyone can decide an approval, a second decision overwrites the first, a finished execution can be approved, and the decider recorded was whoever the global variable named. Since L1 T3 the recorded decider is the signed-in user; the rest is open.
+Evidence: `server.ts#approval.decidedBy = res.locals.userId;`, `server.ts#const exec = state.executions.find((e) => e.id === req.params.id);`, `server.ts#cfoSignOff: 'GRANTED',`
 Test: L1 T6: a decision on a non-pending approval gets 409
 
 ### S6 · tenant isolation · critical · confidence high
@@ -122,8 +125,8 @@ Evidence: `server/storage.ts#simulatedScope.getStore()`, `server/honesty.test.ts
 Test: L1 T13: every invented audit record is flagged simulated and absent from exports
 
 ### S21 · audit integrity · high · confidence high
-Audit records name the spoofable global user and a fixed placeholder email, not the actor's.
-Evidence: `server.ts#userEmail: 'user@nexus.internal',`, `server.ts#userId: currentUserId,`
+Audit records name the spoofable global user and a fixed placeholder email, not the actor's. Since L1 T3 the user id is the signed-in user's; most records still carry a placeholder email.
+Evidence: `server.ts#userEmail: 'user@nexus.internal',`, `server.ts#userId: res.locals.userId,`
 Test: L1 T13: an audit record names the session user and that user's email
 
 ### S22 · audit integrity · high · confidence high
@@ -201,7 +204,8 @@ Test: L1 T11: an invalid deployment status gets 400 and changes nothing
 
 ### S36 · authentication · medium · confidence high
 The me route returns every user of every org, with names, emails and roles, and an unknown user id falls back to the first user, the org admin. S6 lists the other list routes but not users.
-Evidence: `server.ts#availableUsers: state.users,`, `server.ts#const user = state.users.find((u) => u.id === currentUserId) || state.users[0];`
+Fixed in L1 T3: the me route lists only the caller's org, without password hashes, and a session whose user no longer exists gets 401.
+Evidence: `server.ts#availableUsers: state.users.filter((u) => u.orgId === user.orgId).map(publicUser),`, `server/tenancy.test.ts#an unknown user gets 401, and the me route lists only the caller's org`
 Test: L1 T3: an unknown user gets 401, and the me route lists only the caller's org
 
 ### S37 · availability · medium · confidence medium
@@ -213,3 +217,8 @@ Test: L1 T11: a request body over the limit gets 413
 Deployment runs and test-invokes return the run's variables as output, including the full text of the knowledge document the workflow read, to any caller who can invoke them; test-invoke needs no key.
 Evidence: `server/engine.ts#currentVariables.knowledgeContext = doc?.content || '';`
 Test: L1 T4: a deployment response carries no knowledge document text
+
+### S39 · authentication · medium · confidence high
+Added in L1 T3, which introduced sign-in: nothing limits failed attempts, per account or per client, so a password can be guessed online at the speed scrypt allows. Read in code.
+Evidence: `server.ts#if (!verifyPassword(String(password ?? ''), user?.passwordHash) || !user) {`
+Test: L1 T11: repeated failed sign-ins for one account get 429

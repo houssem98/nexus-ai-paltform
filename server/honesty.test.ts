@@ -15,6 +15,9 @@ process.chdir(fs.mkdtempSync(path.join(os.tmpdir(), 'nexus-honesty-')));
 const { app } = await import('../server');
 const { db } = await import('./storage');
 const { executeAgentDirectly } = await import('./engine');
+const { createSession, SESSION_COOKIE } = await import('./auth');
+// Signed in as the seed org admin; sign-in itself is tested in tenancy.test.ts.
+const cookie = `${SESSION_COOKIE}=${createSession(db.getState().users[0])}`;
 
 const server = app.listen(0);
 await once(server, 'listening');
@@ -24,7 +27,7 @@ const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 async function call(method: string, url: string, body?: unknown) {
   const res = await fetch(base + url, {
     method,
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', cookie },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   return { status: res.status, body: await res.json().catch(() => null) };
@@ -87,7 +90,7 @@ test('simulated audit records appear only in demo mode and never leave in an exp
   const listed = async () => (await call('GET', '/api/v1/audit-events')).body.auditLogs.map((l: any) => l.id);
   assert.ok((await listed()).includes(simulated.id));
   const json = (await call('GET', '/api/v1/audit-events/export?format=json')).body.logs.map((l: any) => l.id);
-  const csv = await (await fetch(`${base}/api/v1/audit-events/export?format=csv`)).text();
+  const csv = await (await fetch(`${base}/api/v1/audit-events/export?format=csv`, { headers: { cookie } })).text();
   assert.ok(json.includes(real.id) && !json.includes(simulated.id), 'JSON export');
   assert.ok(csv.includes(real.id) && !csv.includes(simulated.id), 'CSV export');
 
