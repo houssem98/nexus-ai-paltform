@@ -1,7 +1,9 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig} from 'vite';
+import {defineConfig, normalizePath} from 'vite';
+
+const root = normalizePath(import.meta.dirname);
 
 export default defineConfig(() => {
   return {
@@ -29,6 +31,21 @@ export default defineConfig(() => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      fs: {
+        // Vite's defaults, plus the data store (it holds deployment keys) and the server source,
+        // because `npm start` serves the project root through this dev middleware.
+        deny: [
+          '.env',
+          '.env.*',
+          '*.{crt,pem,key,p12,pfx,cer,der}',
+          '.npmrc',
+          '.yarnrc.yml',
+          '**/.git/**',
+          `${root}/data/**`,
+          `${root}/server/**`,
+          `${root}/server.ts`,
+        ],
+      },
     },
   };
 });
