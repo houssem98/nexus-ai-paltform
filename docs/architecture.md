@@ -59,4 +59,4 @@ Nexus AI Platform is a modular, high-security enterprise platform for designing,
 ## 5. Security & Threat Model
 - Secret Protection (**partial**): the model key stays on the server, but deployment API keys are returned to any caller (finding S11), and no external connector credentials exist yet.
 - SSRF Prevention (**built, not yet wired**): no tool makes an outbound call yet. Since L1 T12, `server/egress.ts#export async function assertSafeEgress(` refuses non-http(s) schemes and any host that resolves to a loopback, private, link-local (cloud metadata) or reserved address, proven by `server/egress.test.ts`. L5 T8 wires it into the first connector before that connector calls out.
-- Human In The Loop (**partial**): execution pauses at an Approval Node, but any caller can decide it, and approving does not run the remaining nodes (L1 T6, L3 T4).
+- Human In The Loop (**partial**): execution pauses at an Approval Node; since L1 T6 only the role the node names, or the org admin, may decide it, once (`server.ts#if (res.locals.user.role !== requiredRole && res.locals.user.role !== 'org_admin') {`). Approving does not run the remaining nodes (L3 T4).

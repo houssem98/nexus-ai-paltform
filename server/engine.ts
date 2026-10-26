@@ -408,6 +408,7 @@ export async function runWorkflowExecution(executionId: string): Promise<Executi
             nodeId: node.id,
             nodeLabel: node.label,
             payload: currentVariables,
+            requiredRole: node.config.requiredRole || 'workspace_admin',
             status: 'pending',
             createdAt: new Date().toISOString(),
           });

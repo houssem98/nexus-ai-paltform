@@ -518,3 +518,53 @@ test('reading stays open to every role of the org, viewer included', async () =>
     assert.equal((await as(users.b_viewer)('GET', url)).status, 200, url);
   }
 });
+
+// L1 T6: an approval is decided only by the role its node names (or the org admin), once, and records who decided.
+async function waitingForApproval(requiredRole: string) {
+  const wf = await made(B('POST', '/api/v1/workflows', {
+    name: `approval ${requiredRole}`,
+    nodes: [
+      { id: 's', type: 'start', label: 'Start', position: { x: 0, y: 0 }, config: {} },
+      { id: 'a', type: 'approval', label: 'Sign-off', position: { x: 0, y: 0 }, config: { requiredRole } },
+      { id: 'e', type: 'end', label: 'End', position: { x: 0, y: 0 }, config: {} },
+    ],
+    edges: [{ id: 'e1', source: 's', target: 'a' }, { id: 'e2', source: 'a', target: 'e' }],
+  }), 'workflow');
+  const exec = await made(as(users.b_operator)('POST', `/api/v1/workflows/${wf.id}/execute`, {}), 'execution');
+  assert.equal(exec.status, 'waiting_approval');
+  return exec.id as string;
+}
+const approvalOf = (executionId: string) => db.getState().approvals.find((a) => a.executionId === executionId)!;
+
+test('a decision by a role the approval node does not name gets 403', async () => {
+  const id = await waitingForApproval('org_admin');
+  assert.equal(approvalOf(id).requiredRole, 'org_admin', 'the approval keeps the role its node named');
+  const r = await as(users.b_workspace_admin)('POST', `/api/v1/executions/${id}/approve`, { decision: 'approve' });
+  assert.equal(r.status, 403);
+  assert.equal(approvalOf(id).status, 'pending', 'nothing was decided');
+});
+
+test('a decision on a non-pending approval gets 409', async () => {
+  const id = await waitingForApproval('workspace_admin');
+  const decide = (decision: string) => as(users.b_workspace_admin)('POST', `/api/v1/executions/${id}/approve`, { decision });
+  assert.equal((await decide('reject')).status, 200);
+  const first = JSON.stringify(approvalOf(id));
+  assert.equal((await decide('approve')).status, 409, 'a second decision');
+  assert.equal(JSON.stringify(approvalOf(id)), first, 'the first decision stands');
+  // An execution that never waited for approval has nothing to decide either.
+  const done = (await made(B('POST', `/api/v1/workflows/${(await made(B('POST', '/api/v1/workflows', { name: 'plain' }), 'workflow')).id}/execute`, {}), 'execution')).id;
+  assert.equal((await as(users.b_org_admin)('POST', `/api/v1/executions/${done}/approve`, { decision: 'approve' })).status, 409);
+});
+
+test('an approval records the signed-in user who decided it', async () => {
+  const id = await waitingForApproval('workspace_admin');
+  const r = await as(users.b_workspace_admin)('POST', `/api/v1/executions/${id}/approve`, { decision: 'approve', notes: 'ok' });
+  assert.equal(r.status, 200);
+  const approval = approvalOf(id);
+  assert.deepEqual([approval.status, approval.decidedBy], ['approved', 'usr_b_workspace_admin']);
+  assert.ok(approval.decidedAt);
+  // The org admin may decide an approval that names another role.
+  const other = await waitingForApproval('workspace_admin');
+  assert.equal((await as(users.b_org_admin)('POST', `/api/v1/executions/${other}/approve`, { decision: 'approve' })).status, 200);
+  assert.equal(approvalOf(other).decidedBy, 'usr_b_org_admin');
+});

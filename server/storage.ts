@@ -264,6 +264,8 @@ export interface ApprovalRequest {
   nodeLabel: string;
   payload: any;
   status: 'pending' | 'approved' | 'rejected';
+  // The role the approval node names; older records without it need a workspace_admin.
+  requiredRole?: User['role'];
   decisionNotes?: string;
   decidedBy?: string;
   decidedAt?: string;

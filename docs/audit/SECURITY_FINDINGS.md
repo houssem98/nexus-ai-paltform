@@ -45,8 +45,8 @@ Evidence: `server.ts#if (!allowed(user.role, req.method, req.baseUrl + req.path)
 Test: L1 T5: a table of role by route returns 2xx or 403 as the permission table says
 
 ### S5 · authentication · high · confidence high
-Anyone can decide an approval, a second decision overwrites the first, a finished execution can be approved, and the decider recorded was whoever the global variable named. Since L1 T3 the recorded decider is the signed-in user; the rest is open.
-Evidence: `server.ts#approval.decidedBy = res.locals.userId;`, `server.ts#const exec = state.executions.find((e) => e.id === req.params.id && e.orgId === res.locals.orgId);`, `server.ts#cfoSignOff: 'GRANTED',`
+Anyone can decide an approval, a second decision overwrites the first, a finished execution can be approved, and the decider recorded was whoever the global variable named. Since L1 T3 the recorded decider is the signed-in user. Fixed in L1 T6: only the role the approval node names, or the org admin, may decide (403 otherwise), and only while the approval is pending (409 otherwise). Still open: approving writes an invented outcome instead of running the remaining nodes (L3 T4).
+Evidence: `server.ts#if (res.locals.user.role !== requiredRole && res.locals.user.role !== 'org_admin') {`, `server.ts#if (!approval) return res.status(409).json({ error: 'This execution has no pending approval.' });`, `server/tenancy.test.ts#a decision on a non-pending approval gets 409`, `server.ts#approval.decidedBy = res.locals.userId;`, `server.ts#const exec = state.executions.find((e) => e.id === req.params.id && e.orgId === res.locals.orgId);`, `server.ts#cfoSignOff: 'GRANTED',`
 Test: L1 T6: a decision on a non-pending approval gets 409
 
 ### S6 · tenant isolation · critical · confidence high

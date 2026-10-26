@@ -520,17 +520,22 @@ app.get('/api/v1/executions/:id', (req: Request, res: Response) => {
 
 app.post('/api/v1/executions/:id/approve', async (req: Request, res: Response) => {
   const { decision, notes } = req.body;
-  const execution = db.mutate((state) => {
-    const exec = state.executions.find((e) => e.id === req.params.id && e.orgId === res.locals.orgId);
-    if (!exec) return null;
+  const state = db.getState();
+  const exec = state.executions.find((e) => e.id === req.params.id && e.orgId === res.locals.orgId);
+  if (!exec) return res.status(404).json({ error: 'Execution not found' });
+  // One decision per approval, by the role its node names; the org admin may always decide.
+  const approval = state.approvals.find((a) => a.executionId === exec.id && a.status === 'pending');
+  if (!approval) return res.status(409).json({ error: 'This execution has no pending approval.' });
+  const requiredRole = approval.requiredRole ?? 'workspace_admin';
+  if (res.locals.user.role !== requiredRole && res.locals.user.role !== 'org_admin') {
+    return res.status(403).json({ error: `Only a ${requiredRole} may decide this approval.` });
+  }
 
-    const approval = state.approvals.find((a) => a.executionId === exec.id && a.status === 'pending');
-    if (approval) {
-      approval.status = decision === 'approve' ? 'approved' : 'rejected';
-      approval.decisionNotes = notes || 'Authorized in Command Center';
-      approval.decidedBy = res.locals.userId;
-      approval.decidedAt = new Date().toISOString();
-    }
+  const execution = db.mutate(() => {
+    approval.status = decision === 'approve' ? 'approved' : 'rejected';
+    approval.decisionNotes = notes || 'Authorized in Command Center';
+    approval.decidedBy = res.locals.userId;
+    approval.decidedAt = new Date().toISOString();
 
     if (decision === 'approve') {
       exec.status = 'completed';
@@ -549,8 +554,6 @@ app.post('/api/v1/executions/:id/approve', async (req: Request, res: Response) =
     }
     return exec;
   });
-
-  if (!execution) return res.status(404).json({ error: 'Execution not found' });
 
   db.logAudit({
     orgId: res.locals.orgId,
