@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useToast } from '../context/ToastContext';
+import { SimulatedBadge } from './SimulatedBadge';
 
 interface AgentStudioProps {
   agents: any[];
@@ -104,7 +105,8 @@ export const AgentStudio: React.FC<AgentStudioProps> = ({
         useHighThinking: thinkingMode,
       });
       setTestResult(res);
-      toast.success('Test Completed', `Execution verified in ${res.durationMs || 1240}ms`);
+      if (res.simulated) toast.info('Simulated Test', 'Demo mode: no model was called.');
+      else toast.success('Test Completed', `Answered by ${res.modelUsed}.`);
     } catch (err: any) {
       setTestResult({ error: err?.message || 'Agent test failed' });
       toast.error('Agent Test Failed', err?.message || 'Execution error');
@@ -212,7 +214,7 @@ export const AgentStudio: React.FC<AgentStudioProps> = ({
                 <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">{ag.description}</p>
                 <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500">
                   <span>{ag.department}</span>
-                  <span className="font-mono text-slate-400">Gemini 4 Argon</span>
+                  <span className="font-mono text-slate-400">{ag.versions?.find((v: any) => v.version === ag.activeVersion)?.model ?? '—'}</span>
                 </div>
               </div>
             );
@@ -495,7 +497,10 @@ export const AgentStudio: React.FC<AgentStudioProps> = ({
           <label className="text-[11px] font-medium text-slate-400 mb-1.5 flex items-center justify-between">
             <span>Execution Trace & Output</span>
             {testResult?.modelUsed && (
-              <span className="text-[10px] font-mono text-slate-500">{testResult.modelUsed}</span>
+              <span className="flex items-center gap-1.5 text-[10px] font-mono text-slate-500">
+                {testResult.modelUsed}
+                {testResult.simulated && <SimulatedBadge />}
+              </span>
             )}
           </label>
 
@@ -530,7 +535,7 @@ export const AgentStudio: React.FC<AgentStudioProps> = ({
             {testResult?.tokensUsed && (
               <div className="pt-2 border-t border-white/[0.06] text-[10px] text-slate-500 flex items-center justify-between tabular-nums">
                 <span>Tokens: {testResult.tokensUsed}</span>
-                <span>Cost: ${testResult.costUsd?.toFixed(4) || '0.0039'}</span>
+                <span>Cost: {testResult.costUsd != null ? `$${testResult.costUsd.toFixed(4)}` : '—'}</span>
               </div>
             )}
           </div>

@@ -68,7 +68,7 @@ export const DeploymentCenter: React.FC<DeploymentCenterProps> = ({
     if (!selectedDep) return;
     navigator.clipboard.writeText(selectedDep.apiKey);
     setCopiedKey(true);
-    toast.success('API Key Copied', 'Copied mTLS Bearer token to clipboard.');
+    toast.success('API Key Copied', 'Copied the API key to the clipboard.');
     setTimeout(() => setCopiedKey(false), 2000);
   };
 
@@ -103,10 +103,10 @@ export const DeploymentCenter: React.FC<DeploymentCenterProps> = ({
       });
       const data = await res.json();
       setCallResponse({ status: res.status, data });
-      if (res.ok) {
-        toast.success('Live API Succeeded', `HTTP ${res.status} returned in ${data.durationMs || 140}ms.`);
+      if (res.ok && data.status === 'completed') {
+        toast.success('Execution Completed', data.simulated ? 'Simulated in demo mode.' : `HTTP ${res.status}`);
       } else {
-        toast.warning('Invocation Responded with Error', `HTTP ${res.status}`);
+        toast.warning('Execution Did Not Complete', `HTTP ${res.status}, status ${data.status ?? 'unknown'}`);
       }
       if (onRefreshDeployments) onRefreshDeployments();
     } catch (e: any) {
@@ -130,7 +130,7 @@ export const DeploymentCenter: React.FC<DeploymentCenterProps> = ({
       });
       setShowCreateModal(false);
       setDeployName('');
-      toast.success('Endpoint Published', `Deployed to ${deployEnv} with token bucket rate limit.`);
+      toast.success('Endpoint Published', `Deployed to ${deployEnv}. Rate limits are stored but not enforced yet.`);
       if (res.deployment) {
         setSelectedDepId(res.deployment.id);
       }
@@ -169,7 +169,7 @@ export const DeploymentCenter: React.FC<DeploymentCenterProps> = ({
         <div>
           <h1 className="text-xl font-semibold text-white tracking-tight">Deployment & Ingress Center</h1>
           <p className="text-xs text-slate-400 mt-1">
-            Deploy immutable workflow versions into authenticated REST webhooks with API key authorization.
+            Publish workflows as REST webhooks with API key authorization. Published versions can still be edited.
           </p>
         </div>
 
@@ -245,7 +245,7 @@ export const DeploymentCenter: React.FC<DeploymentCenterProps> = ({
                         handleUpdateStatus(dep.id, 'suspended');
                       }}
                       className="px-2 py-0.5 rounded bg-white/[0.04] hover:bg-amber-500/20 text-slate-400 hover:text-amber-300 text-[11px] transition"
-                      title="Suspend traffic to endpoint"
+                      title="Mark suspended (execution does not check this yet)"
                     >
                       Suspend
                     </button>
@@ -267,7 +267,7 @@ export const DeploymentCenter: React.FC<DeploymentCenterProps> = ({
                       handleUpdateStatus(dep.id, 'rolled_back');
                     }}
                     className="px-2 py-0.5 rounded bg-white/[0.04] hover:bg-white/[0.08] text-slate-400 hover:text-slate-200 text-[11px] transition"
-                    title="Roll back to previous version"
+                    title="Mark rolled back (no earlier version is restored)"
                   >
                     Rollback
                   </button>
@@ -390,7 +390,7 @@ export const DeploymentCenter: React.FC<DeploymentCenterProps> = ({
                 Publish Workflow to Ingress Gateway
               </h2>
               <p className="text-xs text-slate-400 mt-1">
-                Creates an immutable authenticated REST webhook for the selected workflow.
+                Creates an authenticated REST webhook for the selected workflow.
               </p>
             </div>
 
@@ -450,7 +450,7 @@ export const DeploymentCenter: React.FC<DeploymentCenterProps> = ({
 
               <div className="p-3 rounded-lg bg-white/[0.02] border border-white/[0.05] text-[11px] text-slate-400 space-y-1 font-mono">
                 <div>Authentication: <span className="text-white">Bearer API Token (Auto-Generated)</span></div>
-                <div>SSRF Guard: <span className="text-emerald-400">Strict Host Whitelist</span></div>
+                <div>Egress guard: <span className="text-slate-400">not built yet</span></div>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2">

@@ -96,11 +96,10 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={onOpenVerifier}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-xs text-emerald-300 hover:text-emerald-200 transition"
-            title="Open Live Platform Feature Verifier"
+            title="Open the simulated platform self-test"
           >
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
             <span className="font-medium">Verify Platform</span>
-            <span className="text-[10px] font-mono text-emerald-400 font-semibold px-1 rounded bg-emerald-500/20">40/40</span>
           </button>
         )}
 
@@ -112,7 +111,6 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
             <span className="font-medium">Roadmap</span>
-            <span className="text-[10px] font-mono text-blue-400 font-semibold px-1 py-0.2 rounded bg-blue-500/10">100%</span>
           </button>
         )}
 

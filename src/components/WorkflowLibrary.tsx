@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Download, ArrowRight } from 'lucide-react';
 import { NavTab } from './Sidebar';
+import { SimulatedBadge } from './SimulatedBadge';
 
 interface WorkflowLibraryProps {
   workflows: any[];
@@ -73,9 +74,9 @@ export const WorkflowLibrary: React.FC<WorkflowLibraryProps> = ({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
         <div>
-          <h1 className="text-xl font-semibold text-white tracking-tight">Pipeline Blueprints</h1>
+          <h1 className="text-xl font-semibold text-white tracking-tight flex items-center gap-2">Pipeline Blueprints <SimulatedBadge label="Sample templates" /></h1>
           <p className="text-xs text-slate-400 mt-1">
-            Pre-wired graph topologies with verified model reasoning policies and enterprise ERP adapters.
+            Sample topologies to start from. Two have no stored workflow, and opening one does not load it into the builder.
           </p>
         </div>
 
@@ -153,7 +154,7 @@ export const WorkflowLibrary: React.FC<WorkflowLibraryProps> = ({
                   <td className="py-3 font-medium text-slate-200">{wf.name}</td>
                   <td className="py-3 text-slate-400">{wf.department}</td>
                   <td className="py-3 font-mono text-slate-400">v{wf.activeVersion}</td>
-                  <td className="py-3 text-emerald-400 font-medium">Published</td>
+                  <td className="py-3 text-slate-300 font-medium capitalize">{wf.versions?.find((v: any) => v.version === wf.activeVersion)?.status ?? '—'}</td>
                   <td className="py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
                       {onSelectWorkflow && (

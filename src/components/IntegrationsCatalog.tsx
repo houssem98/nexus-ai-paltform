@@ -139,7 +139,7 @@ export const IntegrationsCatalog: React.FC<IntegrationsCatalogProps> = ({
                     <h3 className="text-sm font-semibold text-white truncate">{item.name}</h3>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-emerald-400 font-medium">Connected</span>
+                    <span className="text-xs text-slate-300 font-medium capitalize">{item.status}</span>
                     <button
                       onClick={() => handleDeleteConnector(item.id)}
                       className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition"
@@ -176,7 +176,7 @@ export const IntegrationsCatalog: React.FC<IntegrationsCatalogProps> = ({
               {/* Action */}
               <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between text-xs">
                 <span className="text-[11px] text-slate-500">
-                  {item.lastTestedAt ? `Verified ${new Date(item.lastTestedAt).toLocaleDateString()}` : 'Ready for test'}
+                  {item.lastTestedAt ? `Last recorded test ${new Date(item.lastTestedAt).toLocaleDateString()}` : 'Never tested'}
                 </span>
 
                 <div className="flex items-center gap-1.5">

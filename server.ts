@@ -381,7 +381,7 @@ app.get('/api/v1/analytics/trends', (req: Request, res: Response) => {
       const matchOrg = e.orgId === currentOrgId;
       const matchAgent = agentId === 'all' || e.agentId === agentId;
       const started = e.startedAt ? e.startedAt.split('T')[0] : '';
-      return matchOrg && matchAgent && started === dateStr;
+      return matchOrg && matchAgent && started === dateStr && (simulated || !e.simulated);
     });
 
     const realCount = matchingReal.length;
@@ -704,9 +704,6 @@ app.post('/api/v1/integrations/:id/test', demoOnly, (req: Request, res: Response
   const integration = state.integrations.find((i) => i.id === req.params.id);
   if (!integration) return res.status(404).json({ error: 'Integration not found' });
 
-  integration.lastTestedAt = new Date().toISOString();
-  integration.status = 'connected';
-
   db.logAudit({
     orgId: currentOrgId,
     workspaceId: currentWorkspaceId,
@@ -738,11 +735,11 @@ app.post('/api/v1/integrations', (req: Request, res: Response) => {
       category: category || 'api',
       description: description || 'Custom REST/MCP integration endpoint',
       authType: authType || 'bearer',
-      status: 'connected' as const,
+      // Never tested: no connector makes a network call yet.
+      status: 'disconnected' as const,
       baseUrl: baseUrl || 'https://api.internal.enterprise/v1',
       allowedMethods: ['GET', 'POST'],
       permissionsRequired: permissionsRequired || ['network.egress', 'read'],
-      lastTestedAt: new Date().toISOString(),
       config: {},
     };
     state.integrations.push(item);
@@ -792,7 +789,9 @@ app.delete('/api/v1/integrations/:id', (req: Request, res: Response) => {
 // ==================== EVALUATIONS ====================
 app.get('/api/v1/evaluations', (req: Request, res: Response) => {
   const state = db.getState();
-  res.json({ evaluations: state.evaluations });
+  // Simulated runs are shown only in demo mode.
+  const runs = state.evaluations.runs.filter((r) => state.settings.demoMode || !r.simulated);
+  res.json({ evaluations: { ...state.evaluations, runs } });
 });
 
 app.post('/api/v1/evaluations/datasets', (req: Request, res: Response) => {
@@ -875,6 +874,7 @@ app.post('/api/v1/evaluations/runs', demoOnly, async (req: Request, res: Respons
     results,
     startedAt: new Date(Date.now() - 4000).toISOString(),
     completedAt: new Date().toISOString(),
+    simulated: true,
   };
 
   db.mutate((s) => {
@@ -899,7 +899,8 @@ app.post('/api/v1/evaluations/runs', demoOnly, async (req: Request, res: Respons
 // ==================== DEPLOYMENTS ====================
 app.get('/api/v1/deployments', (req: Request, res: Response) => {
   const state = db.getState();
-  res.json({ deployments: state.deployments });
+  // Deployments made by simulated features are shown only in demo mode.
+  res.json({ deployments: state.deployments.filter((d) => state.settings.demoMode || !d.simulated) });
 });
 
 // Authenticated deployment execution endpoint
@@ -910,6 +911,9 @@ app.post('/api/v1/deployments/:id/execute', async (req: Request, res: Response) 
 
   if (!deployment) {
     return res.status(404).json({ error: 'Deployment not found' });
+  }
+  if (deployment.simulated && !state.settings.demoMode) {
+    return res.status(501).json({ error: 'This deployment was made by a simulated feature and runs only in demo mode.' });
   }
 
   // Validate API key
@@ -946,6 +950,7 @@ app.post('/api/v1/deployments/:id/execute', async (req: Request, res: Response) 
     status: executed.status,
     output: executed.output,
     durationMs: executed.durationMs,
+    ...(executed.simulated ? { simulated: true } : {}),
   });
 });
 
@@ -1219,6 +1224,10 @@ app.get('/api/v1/settings', (req: Request, res: Response) => {
 
 app.patch('/api/v1/settings', (req: Request, res: Response) => {
   const { allowedModels, requireHumanApprovalForDeploy, dataRetentionDays, demoMode } = req.body;
+  // Demo mode is the line between simulated and real features, so a truthy string must not flip it.
+  if (demoMode !== undefined && typeof demoMode !== 'boolean') {
+    return res.status(400).json({ error: 'demoMode must be true or false.' });
+  }
   const updated = db.mutate((state) => {
     if (allowedModels !== undefined) state.settings.allowedModels = allowedModels;
     if (requireHumanApprovalForDeploy !== undefined) state.settings.requireHumanApprovalForDeploy = requireHumanApprovalForDeploy;
@@ -1383,6 +1392,7 @@ app.post('/api/v1/fine-tuning/:id/deploy', demoOnly, (req: Request, res: Respons
       endpointUrl: `/api/v1/deployments/${depId}/execute`,
       invocationsTotal: 0,
       createdAt: new Date().toISOString(),
+      simulated: true,
     };
     s.deployments.unshift(dep);
     job.deployedEndpoint = dep.endpointUrl;
@@ -2056,6 +2066,9 @@ app.post('/api/v1/deployments/:id/test-invoke', async (req: Request, res: Respon
   const state = db.getState();
   const deployment = state.deployments.find((d) => d.id === req.params.id);
   if (!deployment) return res.status(404).json({ error: 'Deployment not found' });
+  if (deployment.simulated && !state.settings.demoMode) {
+    return res.status(501).json({ error: 'This deployment was made by a simulated feature and runs only in demo mode.' });
+  }
 
   const executionId = `exec_dep_test_${Date.now()}`;
   const executionRecord = {
@@ -2081,7 +2094,7 @@ app.post('/api/v1/deployments/:id/test-invoke', async (req: Request, res: Respon
   const executed = await runWorkflowExecution(executionId);
 
   res.json({
-    success: true,
+    success: executed.status === 'completed',
     deploymentId: deployment.id,
     deploymentName: deployment.name,
     environment: deployment.environment,
@@ -2089,8 +2102,9 @@ app.post('/api/v1/deployments/:id/test-invoke', async (req: Request, res: Respon
     status: executed.status,
     statusCode: executed.status === 'completed' ? 200 : 500,
     output: executed.output,
-    durationMs: executed.durationMs || 1420,
+    durationMs: executed.durationMs,
     invocationsTotal: deployment.invocationsTotal,
+    ...(executed.simulated ? { simulated: true } : {}),
   });
 });
 
@@ -2224,9 +2238,6 @@ app.post('/api/v1/integrations/:id/sync', demoOnly, (req: Request, res: Response
   const state = db.getState();
   const integration = state.integrations.find((i) => i.id === req.params.id);
   if (!integration) return res.status(404).json({ error: 'Integration not found' });
-
-  integration.lastTestedAt = new Date().toISOString();
-  integration.status = 'connected';
 
   db.logAudit({
     orgId: currentOrgId,

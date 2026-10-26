@@ -104,7 +104,7 @@ export const ExecutionTrendsChart: React.FC<ExecutionTrendsChartProps> = ({ agen
           unitLabel: 'runs',
           formatValue: (val: number) => val.toLocaleString(),
           summaryLabel: 'Period Invocations',
-          summaryValue: summary?.totalExecutions.toLocaleString() || '0',
+          summaryValue: summary ? summary.totalExecutions.toLocaleString() : '—',
           secondaryLabel: 'Success Rate',
           secondaryValue: summary?.successRate != null ? `${summary.successRate}%` : '—',
         };
@@ -123,7 +123,7 @@ export const ExecutionTrendsChart: React.FC<ExecutionTrendsChartProps> = ({ agen
             return val.toString();
           },
           summaryLabel: 'Total Tokens Consumed',
-          summaryValue: summary?.totalTokens ? `${(summary.totalTokens / 1000000).toFixed(2)}M` : '0',
+          summaryValue: summary ? `${(summary.totalTokens / 1000000).toFixed(2)}M` : '—',
           secondaryLabel: 'Avg / Execution',
           secondaryValue:
             summary && summary.totalExecutions > 0
@@ -141,12 +141,12 @@ export const ExecutionTrendsChart: React.FC<ExecutionTrendsChartProps> = ({ agen
           unitLabel: 'USD',
           formatValue: (val: number) => `$${val.toFixed(4)}`,
           summaryLabel: 'Net Period Spend',
-          summaryValue: `$${summary?.totalCostUsd.toFixed(4) || '0.0000'}`,
+          summaryValue: summary ? `$${summary.totalCostUsd.toFixed(4)}` : '—',
           secondaryLabel: 'Daily Avg Spend',
           secondaryValue:
             summary && dataPoints.length > 0
               ? `$${(summary.totalCostUsd / dataPoints.length).toFixed(4)}`
-              : '$0.0000',
+              : '—',
         };
       case 'latency':
         return {
@@ -200,7 +200,8 @@ export const ExecutionTrendsChart: React.FC<ExecutionTrendsChartProps> = ({ agen
 
         {/* Filter Controls (Metric Tabs + Time Range + Agent Selector) */}
         <div className="flex flex-wrap items-center gap-2.5">
-          {/* Agent Filter Dropdown */}
+          {/* Agent filter: executions record no agent, so per-agent numbers exist only in the demo blend */}
+          {simulated && (
           <div className="relative flex items-center">
             <Filter className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 pointer-events-none" />
             <select
@@ -220,6 +221,7 @@ export const ExecutionTrendsChart: React.FC<ExecutionTrendsChartProps> = ({ agen
               ▼
             </div>
           </div>
+          )}
 
           {/* Time Range Preset Toggles */}
           <div className="flex items-center bg-[#0A0D14] border border-white/[0.08] rounded-lg p-0.5">
@@ -455,13 +457,6 @@ export const ExecutionTrendsChart: React.FC<ExecutionTrendsChartProps> = ({ agen
           <span className="text-slate-500 block text-[11px]">Peak Load Day</span>
           <span className="font-mono font-semibold text-slate-200 text-sm tabular-nums">
             {summary?.peakDay ? `${summary.peakDay.displayDate} (${summary.peakDay.executions} runs)` : '—'}
-          </span>
-        </div>
-        <div>
-          <span className="text-slate-500 block text-[11px]">Audit Engine State</span>
-          <span className="font-mono text-emerald-400 text-xs flex items-center gap-1.5 mt-0.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            Active Continuous Ingestion
           </span>
         </div>
       </div>

@@ -67,7 +67,6 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
             >
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
               <span>Scale GenAI Roadmap</span>
-              <span className="text-[10px] font-mono text-emerald-400 font-semibold px-1 py-0.2 rounded bg-emerald-500/20">6 Tracks</span>
             </button>
           )}
           <button
@@ -112,7 +111,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
         </div>
 
         <div className="p-5">
-          <div className="text-xs text-slate-400 mb-1.5">Token Consumption (MTD)</div>
+          <div className="text-xs text-slate-400 mb-1.5">Recorded Cost (all runs)</div>
           <div className="text-2xl font-semibold text-white font-mono tabular-nums">${totalCost.toFixed(4)}</div>
           <div className="text-[11px] text-slate-500 mt-1">Gemini 4 Argon inference</div>
         </div>
@@ -143,11 +142,11 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
                 <div>
                   <div className="text-sm font-medium text-slate-200">{appr.workflowName}</div>
                   <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
-                    <span>Vendor: <strong className="text-slate-200">{appr.payload?.vendor || 'Apex Frontier'}</strong></span>
+                    <span>Vendor: <strong className="text-slate-200">{appr.payload?.vendor ?? '—'}</strong></span>
                     <span aria-hidden="true">·</span>
-                    <span>Invoice: <strong className="font-mono text-slate-200">{appr.payload?.invoiceId || 'INV-2026-9042'}</strong></span>
+                    <span>Invoice: <strong className="font-mono text-slate-200">{appr.payload?.invoiceId ?? '—'}</strong></span>
                     <span aria-hidden="true">·</span>
-                    <span>Amount: <strong className="font-mono text-white tabular-nums">${appr.payload?.amount ? Number(appr.payload.amount).toLocaleString() : '84,200.00'}</strong></span>
+                    <span>Amount: <strong className="font-mono text-white tabular-nums">{appr.payload?.amount != null ? `$${Number(appr.payload.amount).toLocaleString()}` : '—'}</strong></span>
                   </div>
                 </div>
 
@@ -221,7 +220,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
                       )}
                     </td>
                     <td className="py-3 font-mono text-slate-400 text-right tabular-nums">
-                      {exec.durationMs ? `${(exec.durationMs / 1000).toFixed(2)}s` : '1.24s'}
+                      {exec.durationMs ? `${(exec.durationMs / 1000).toFixed(2)}s` : '—'}
                     </td>
                   </tr>
                 ))}
@@ -259,7 +258,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
           </div>
 
           <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between text-xs">
-            <span className="text-slate-500 font-mono text-[11px]">Nexus Cluster v2.4</span>
+            <span />
             <button
               onClick={() => onNavigate('deployments')}
               className="text-xs text-blue-400 hover:text-blue-300 transition flex items-center gap-1 font-medium"

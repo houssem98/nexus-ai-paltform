@@ -27,18 +27,18 @@ export const EvaluationLab: React.FC<EvaluationLabProps> = ({ evaluations, onRef
   const [keywordsInput, setKeywordsInput] = useState('cleared, variance, authorized');
 
   const selectedDataset = datasets.find((d: any) => d.id === selectedDatasetId) || datasets[0];
-  const latestRun = runs.find((r: any) => r.datasetId === selectedDataset?.id) || runs[0];
+  const latestRun = runs.find((r: any) => r.datasetId === selectedDataset?.id);
 
   const handleRunEvaluation = async () => {
     setIsRunning(true);
-    toast.info('Evaluating Benchmark', `Running ${selectedDataset?.cases?.length || 2} test cases against Gemini 4 Argon...`);
+    toast.info('Simulated Evaluation', `Demo mode: ${selectedDataset?.cases?.length ?? 0} cases, and no model is called.`);
     try {
       const res = await api.post<any>('/api/v1/evaluations/runs', {
         datasetId: selectedDataset?.id,
         targetType: 'agent',
         targetId: 'agent_invoice_auditor',
       });
-      toast.success('Benchmark Passed', `Achieved ${res.run?.accuracyRate || 100}% accuracy across ${res.run?.totalCases || 2} test cases.`);
+      toast.info('Simulated Run Stored', `Expected outputs were copied, so ${res.run?.accuracyRate}% is not a measurement.`);
       onRefreshEvaluations();
     } catch (e: any) {
       toast.error('Benchmark Failed', e?.message || 'Error running evaluation run');
@@ -180,19 +180,19 @@ export const EvaluationLab: React.FC<EvaluationLabProps> = ({ evaluations, onRef
           <div className="p-5">
             <div className="text-xs text-slate-400 mb-1">Schema Validity</div>
             <div className="text-2xl font-semibold text-white font-mono tabular-nums">{latestRun.schemaValidityRate}%</div>
-            <div className="text-[11px] text-slate-500 mt-1">Strict JSON schema contract</div>
+            <div className="text-[11px] text-slate-500 mt-1">Copied, not checked</div>
           </div>
 
           <div className="p-5">
             <div className="text-xs text-slate-400 mb-1">Average Latency</div>
             <div className="text-2xl font-semibold text-white font-mono tabular-nums">{latestRun.avgLatencyMs}ms</div>
-            <div className="text-[11px] text-slate-500 mt-1">Gemini 4 Argon High-Thinking</div>
+            <div className="text-[11px] text-slate-500 mt-1">Fixed figure, not measured</div>
           </div>
 
           <div className="p-5">
             <div className="text-xs text-slate-400 mb-1">Total Benchmark Cost</div>
             <div className="text-2xl font-semibold text-white font-mono tabular-nums">${latestRun.totalCostUsd?.toFixed(4)}</div>
-            <div className="text-[11px] text-slate-500 mt-1">Inference tokens billed</div>
+            <div className="text-[11px] text-slate-500 mt-1">Fixed figure; no tokens were billed</div>
           </div>
         </div>
       )}

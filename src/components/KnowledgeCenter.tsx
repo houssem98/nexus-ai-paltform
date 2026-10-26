@@ -105,7 +105,7 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ knowledge, onR
     setIsReindexingAll(true);
     try {
       const res = await api.post<any>('/api/v1/knowledge/reindex-all');
-      toast.success('Full Corpus Rebuilt', `Optimized vector index across all ${res.reindexedCount || knowledge.length} documents.`);
+      toast.info('Timestamps Updated', `Touched ${res.reindexedCount} documents. No search index exists yet.`);
       onRefreshKnowledge();
     } catch (err: any) {
       toast.error('Re-index All Failed', err?.message || 'Failed full re-indexing');
@@ -130,10 +130,10 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ knowledge, onR
             onClick={handleReindexAll}
             disabled={isReindexingAll}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-300 hover:text-white text-xs font-medium transition disabled:opacity-50"
-            title="Rebuild and optimize vector index partitions"
+            title="Updates timestamps only; no search index exists yet"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isReindexingAll ? 'animate-spin text-blue-400' : 'text-slate-400'}`} />
-            <span>{isReindexingAll ? 'Re-indexing Corpus...' : 'Re-index Full Corpus'}</span>
+            <span>{isReindexingAll ? 'Touching Documents...' : 'Touch All Documents'}</span>
           </button>
           <button
             onClick={() => setShowAddModal(true)}
@@ -145,11 +145,11 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ knowledge, onR
         </div>
       </div>
 
-      {/* Semantic Retrieval Search Bar */}
+      {/* Search bar: substring match */}
       <div className="p-5 rounded-xl bg-[#0E121C]/60 backdrop-blur-md border border-white/[0.08] space-y-3 shadow-sm">
         <div className="flex items-center justify-between text-xs">
           <span className="font-medium text-slate-300">Retrieval & Citation Sandbox</span>
-          <span className="text-slate-500 font-mono text-[11px]">Hybrid Keyword + Semantic Retrieval</span>
+          <span className="text-slate-500 font-mono text-[11px]">Substring match, no ranking yet</span>
         </div>
 
         <div className="flex gap-2">
@@ -196,7 +196,7 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ knowledge, onR
             <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
               Corpus Collection ({knowledge.length})
             </h2>
-            <span className="text-[10px] font-mono text-emerald-400">Vectors Synced</span>
+            <span className="text-[10px] font-mono text-slate-400">Chunked</span>
           </div>
 
           <div className="space-y-1.5">
@@ -264,7 +264,7 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ knowledge, onR
               <div className="space-y-2.5">
                 <div className="text-xs font-medium text-slate-400 uppercase tracking-wider flex items-center justify-between">
                   <span>Indexed Passages & Citations</span>
-                  <span className="text-[11px] font-mono text-slate-500">Cosine Threshold: 0.82</span>
+                  <span className="text-[11px] font-mono text-slate-500">Substring match</span>
                 </div>
                 {selectedDoc.chunks?.map((chunk: any) => (
                   <div key={chunk.id} className="p-3 rounded-lg bg-white/[0.02] border border-white/[0.05] text-xs space-y-1">

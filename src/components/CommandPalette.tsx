@@ -97,10 +97,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               >
                 <div className="flex items-center gap-2.5">
                   <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                  <span className="font-medium">Verify Platform (Live Studio Self-Test Suite)</span>
+                  <span className="font-medium">Verify Platform (simulated self-test)</span>
                 </div>
                 <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
-                  40/40 CHECKS
+                  DEMO
                 </span>
               </button>
             </div>

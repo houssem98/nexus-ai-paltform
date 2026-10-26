@@ -267,7 +267,7 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
       });
       setValidationResult(res);
       if (res.valid) {
-        toast.success('DAG Validated', 'Topology is deterministic with zero deadlocks.');
+        toast.success('Graph Checked', 'Start and End present, edges point to real nodes. Cycles are not checked yet.');
       } else {
         toast.warning('Topology Warning', res.errors?.[0] || 'Graph validation issues found.');
       }
@@ -310,25 +310,19 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     }
 
     try {
-      for (const node of nodes) {
-        setNodeExecutionStatuses((prev) => ({ ...prev, [node.id]: 'running' }));
-        await new Promise((r) => setTimeout(r, 350));
-        if (node.type === 'approval' && parsedPayload && (parsedPayload as any).amount > 25000) {
-          setNodeExecutionStatuses((prev) => ({ ...prev, [node.id]: 'waiting_approval' }));
-          toast.warning('Approval Required', 'Execution gated at human signoff checkpoint.');
-          break;
-        } else {
-          setNodeExecutionStatuses((prev) => ({ ...prev, [node.id]: 'success' }));
-        }
-      }
-
       const res = await api.post<any>(`/api/v1/workflows/${workflow.id}/execute`, {
         input: parsedPayload,
         trigger: 'manual',
       });
 
+      // Node rings show what the server recorded for each node, nothing more.
+      setNodeExecutionStatuses(Object.fromEntries((res.execution?.nodeExecutions ?? []).map((n: any) => [n.nodeId, n.status])));
       setExecutionOutput(res.execution);
-      toast.success('Execution Completed', `Status: ${res.execution?.status || 'completed'}`);
+      if (res.execution?.status === 'completed') {
+        toast.success('Execution Completed', res.execution.simulated ? 'Simulated in demo mode.' : 'Every node ran.');
+      } else {
+        toast.warning(`Execution ${res.execution?.status ?? 'unknown'}`, res.execution?.error ?? 'See the node trace.');
+      }
       onRefreshExecutions();
     } catch (err: any) {
       setExecutionOutput({ error: err?.message || 'Execution error' });
@@ -653,10 +647,10 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                 {/* Node Subtext */}
                 <div className="text-[10px] text-slate-400 font-normal truncate">
                   {node.type === 'agent' && 'Gemini 4 Argon · High Thinking'}
-                  {node.type === 'condition' && `${node.config.field || 'amount'} > ${node.config.value || '25k'}`}
-                  {node.type === 'approval' && 'CFO Human Reviewer'}
-                  {node.type === 'knowledge' && 'Procurement Policies §4.2'}
-                  {node.type === 'tool' && 'SAP ERP Ledger Commit'}
+                  {node.type === 'condition' && `${node.config.field ?? '?'} ${node.config.operator ?? '>'} ${node.config.value ?? '?'}`}
+                  {node.type === 'approval' && `Role: ${node.config.requiredRole ?? 'workspace_admin'}`}
+                  {node.type === 'knowledge' && (node.config.collectionId ?? 'No collection')}
+                  {node.type === 'tool' && `${node.config.toolId ?? 'No tool'} (simulated)`}
                   {node.type === 'start' && 'Inbound Payload'}
                   {node.type === 'end' && 'Pipeline Terminal'}
                 </div>
@@ -777,7 +771,7 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                   <label className="text-[11px] font-medium text-slate-400 block mb-1">Threshold</label>
                   <input
                     type="number"
-                    value={selectedNode.config.value || 25000}
+                    value={selectedNode.config.value ?? ''}
                     onChange={(e) => {
                       const val = Number(e.target.value);
                       setNodes((prev) =>

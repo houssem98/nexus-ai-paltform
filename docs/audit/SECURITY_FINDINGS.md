@@ -45,7 +45,7 @@ Test: L1 T6: a decision on a non-pending approval gets 409
 
 ### S6 · tenant isolation · critical · confidence high
 List routes return every org's records: integrations, evaluations, deployments, audit events, approvals, fine-tuning jobs, synthetic datasets and red-team runs.
-Evidence: `server.ts#res.json({ integrations: state.integrations });`, `server.ts#res.json({ evaluations: state.evaluations });`, `server.ts#res.json({ approvals: state.approvals });`, `server.ts#jobs: state.fineTuningJobs,`, `server.ts#res.json({ datasets: state.syntheticDatasets, simulated: true });`, `server.ts#runs: state.redTeamingRuns,`
+Evidence: `server.ts#res.json({ integrations: state.integrations });`, `server.ts#res.json({ evaluations: { ...state.evaluations, runs } });`, `server.ts#res.json({ approvals: state.approvals });`, `server.ts#jobs: state.fineTuningJobs,`, `server.ts#res.json({ datasets: state.syntheticDatasets, simulated: true });`, `server.ts#runs: state.redTeamingRuns,`
 Test: L1 T4: no list route returns another org's records
 
 ### S7 · tenant isolation · critical · confidence high
@@ -70,7 +70,7 @@ Test: L1 T4: org B cannot list or delete org A's integration
 
 ### S11 · secrets · critical · confidence high
 The deployment list returns every org's deployments with their API keys to any caller, and the screen copies them to the clipboard.
-Evidence: `server.ts#res.json({ deployments: state.deployments });`, `src/components/DeploymentCenter.tsx#navigator.clipboard.writeText(selectedDep.apiKey);`
+Evidence: `server.ts#res.json({ deployments: state.deployments.filter((d) => state.settings.demoMode || !d.simulated) });`, `src/components/DeploymentCenter.tsx#navigator.clipboard.writeText(selectedDep.apiKey);`
 Test: L1 T7: the deployment list holds no key material
 
 ### S12 · secrets · critical · confidence high

@@ -213,6 +213,7 @@ export interface EvaluationRun {
   }[];
   startedAt: string;
   completedAt: string;
+  simulated?: boolean;
 }
 
 export interface Deployment {
@@ -231,6 +232,7 @@ export interface Deployment {
   invocationsTotal: number;
   lastInvokedAt?: string;
   createdAt: string;
+  simulated?: boolean;
 }
 
 export interface AuditEvent {

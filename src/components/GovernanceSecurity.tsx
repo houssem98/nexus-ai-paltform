@@ -230,19 +230,19 @@ export const GovernanceSecurity: React.FC<GovernanceSecurityProps> = ({
                   {/* Payload Details */}
                   <div className="p-3.5 rounded-lg bg-black/40 border border-white/[0.06] font-mono text-xs text-slate-300 space-y-1 mb-3">
                     <div>
-                      Invoice ID: <span className="text-white font-semibold">{appr.payload?.invoiceId || 'INV-2026-9042'}</span>
+                      Invoice ID: <span className="text-white font-semibold">{appr.payload?.invoiceId ?? '—'}</span>
                     </div>
                     <div>
-                      Vendor: <span className="text-white">{appr.payload?.vendor || 'Apex Frontier'}</span>
+                      Vendor: <span className="text-white">{appr.payload?.vendor ?? '—'}</span>
                     </div>
                     <div>
                       Amount:{' '}
                       <span className="text-white font-bold tabular-nums">
-                        ${appr.payload?.amount ? Number(appr.payload.amount).toLocaleString() : '84,200.00'}
+                        {appr.payload?.amount != null ? `$${Number(appr.payload.amount).toLocaleString()}` : '—'}
                       </span>
                     </div>
                     <div className="text-slate-400 text-[11px] pt-1 border-t border-white/[0.06]">
-                      Policy: {appr.payload?.reason || 'Exceeds auto-posting threshold of $25,000.00'}
+                      Policy: {appr.payload?.reason ?? '—'}
                     </div>
                   </div>
 
@@ -273,8 +273,8 @@ export const GovernanceSecurity: React.FC<GovernanceSecurityProps> = ({
         <div className="rounded-xl bg-[#0E121C]/60 backdrop-blur-md border border-white/[0.08] p-5 space-y-4 shadow-sm">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/[0.06]">
             <div>
-              <h2 className="text-sm font-semibold text-white">Immutable Audit Ledger ({filteredAudit.length})</h2>
-              <p className="text-xs text-slate-400">Cryptographically verifiable sequence of tenant actions</p>
+              <h2 className="text-sm font-semibold text-white">Audit Log ({filteredAudit.length})</h2>
+              <p className="text-xs text-slate-400">Stored as editable JSON, with no tamper evidence yet</p>
             </div>
 
             <div className="flex items-center gap-2">
@@ -347,7 +347,7 @@ export const GovernanceSecurity: React.FC<GovernanceSecurityProps> = ({
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-white">Role-Based Access Control (RBAC) Specification</h2>
-            <span className="text-xs text-slate-500">Tenant-isolated permission policies</span>
+            <span className="text-xs text-slate-500">Defined roles, not enforced yet</span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -430,7 +430,7 @@ export const GovernanceSecurity: React.FC<GovernanceSecurityProps> = ({
                 onChange={(e) => setSettings({ ...settings, dataRetentionDays: Number(e.target.value) })}
                 className="w-48 bg-white/[0.03] border border-white/[0.08] rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-white/20 font-mono"
               />
-              <span className="text-[11px] text-slate-500 block mt-1">Immutable WORM archive storage period</span>
+              <span className="text-[11px] text-slate-500 block mt-1">Stored setting; nothing deletes old records yet</span>
             </div>
 
             <div className="pt-2">
@@ -456,7 +456,7 @@ export const GovernanceSecurity: React.FC<GovernanceSecurityProps> = ({
               {settingsSaved && (
                 <span className="flex items-center gap-1.5 text-xs text-emerald-400 font-mono">
                   <Check className="w-3.5 h-3.5" />
-                  <span>Policies Updated</span>
+                  <span>Settings Saved</span>
                 </span>
               )}
             </div>

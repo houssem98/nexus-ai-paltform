@@ -72,7 +72,6 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [simulating, setSimulating] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [isLiveActive, setIsLiveActive] = useState(true);
 
   // Formatter for relative timestamps
   const formatRelativeTime = (timestamp: string) => {
@@ -303,17 +302,10 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
         <div className="flex items-center gap-2.5">
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-semibold text-white tracking-tight">Live Activity Feed</h2>
-            {isLiveActive ? (
-              <span className="flex items-center gap-1.5 text-[11px] font-mono text-emerald-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Live
-              </span>
-            ) : (
-              <span className="text-[11px] font-mono text-slate-500">Paused</span>
-            )}
+            <span className="text-[11px] font-mono text-slate-500">Updates on refresh</span>
           </div>
           <span className="text-white/20" aria-hidden="true">·</span>
-          <span className="text-xs text-slate-400 font-mono tabular-nums">{auditLogs.length} events logged</span>
+          <span className="text-xs text-slate-400 font-mono tabular-nums">latest {auditLogs.length} events</span>
         </div>
 
         {/* Right Action Bar */}
@@ -651,7 +643,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
       <div className="p-2.5 px-4 bg-[#0A0D14]/80 border-t border-white/[0.08] flex items-center justify-between text-[11px] text-slate-500 font-mono">
         <div className="flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
-          <span>Multi-tenant immutable SHA-256 state ledger</span>
+          <span>Stored audit log (editable JSON)</span>
         </div>
         <span>Click entry to inspect provenance metadata</span>
       </div>

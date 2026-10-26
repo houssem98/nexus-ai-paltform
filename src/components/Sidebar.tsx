@@ -145,7 +145,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span>High Thinking</span>
           </div>
           <p className="text-[10px] text-slate-500 leading-normal">
-            Reasoning level set to high for multi-hop constraint verification.
+            Workflow agent steps always request high thinking, whatever each agent's setting.
           </p>
         </div>
       )}

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { BrainCircuit, XCircle, Clock, CheckCircle2, AlertTriangle, ShieldAlert, Download } from 'lucide-react';
 import { api } from '../lib/api';
 import { useToast } from '../context/ToastContext';
+import { SimulatedBadge } from './SimulatedBadge';
 
 interface ObservabilityExplorerProps {
   executions: any[];
@@ -24,7 +25,7 @@ export const ObservabilityExplorer: React.FC<ObservabilityExplorerProps> = ({
     setCancelling(true);
     try {
       await api.post(`/api/v1/executions/${id}/cancel`);
-      toast.info('Execution Cancelled', 'Terminated pending execution tasks.');
+      toast.info('Execution Cancelled', 'Marked cancelled. A step already running is not interrupted.');
       if (onRefreshExecutions) onRefreshExecutions();
     } catch (e: any) {
       toast.error('Cancel Failed', e?.message || 'Error cancelling execution');
@@ -129,7 +130,7 @@ export const ObservabilityExplorer: React.FC<ObservabilityExplorerProps> = ({
 
                   <div className="text-[11px] text-slate-500 flex items-center justify-between font-mono">
                     <span>{exec.id.slice(0, 16)}</span>
-                    <span className="tabular-nums">{exec.durationMs ? `${(exec.durationMs / 1000).toFixed(2)}s` : '1.2s'}</span>
+                    <span className="tabular-nums">{exec.durationMs ? `${(exec.durationMs / 1000).toFixed(2)}s` : '—'}</span>
                   </div>
                 </div>
               );
@@ -162,18 +163,18 @@ export const ObservabilityExplorer: React.FC<ObservabilityExplorerProps> = ({
                     </span>
                   </div>
                   <div className="text-xs text-slate-400 mt-0.5">
-                    ID: <span className="font-mono text-slate-300">{selectedExec.id}</span> · Trigger: {selectedExec.trigger}
+                    ID: <span className="font-mono text-slate-300">{selectedExec.id}</span> · Trigger: {selectedExec.trigger} {selectedExec.simulated && <SimulatedBadge label="Simulated run" />}
                   </div>
                 </div>
 
                 <div className="flex items-center gap-4 text-xs font-mono">
                   <div>
                     <span className="text-slate-500 text-[10px] block">TOKENS</span>
-                    <span className="text-slate-200 font-semibold tabular-nums">{selectedExec.totalTokens || 1240}</span>
+                    <span className="text-slate-200 font-semibold tabular-nums">{selectedExec.totalTokens ?? '—'}</span>
                   </div>
                   <div>
                     <span className="text-slate-500 text-[10px] block">COST</span>
-                    <span className="text-white font-semibold tabular-nums">${selectedExec.totalCostUsd?.toFixed(4) || '0.0037'}</span>
+                    <span className="text-white font-semibold tabular-nums">{selectedExec.totalCostUsd != null ? `$${selectedExec.totalCostUsd.toFixed(4)}` : '—'}</span>
                   </div>
 
                   {(selectedExec.status === 'waiting_approval' || selectedExec.status === 'running' || selectedExec.status === 'pending') && (
@@ -205,10 +206,11 @@ export const ObservabilityExplorer: React.FC<ObservabilityExplorerProps> = ({
                           <span className="text-[11px] font-mono text-slate-500">0{idx + 1}.</span>
                           <span className="font-medium text-slate-200">{step.nodeLabel}</span>
                           <span className="text-[10px] font-mono text-slate-500 uppercase">{step.nodeType}</span>
+                          {(step.simulated || step.output?.simulated) && <SimulatedBadge label="Simulated" />}
                         </div>
 
                         <div className="flex items-center gap-3 font-mono text-[11px]">
-                          <span className="text-slate-500 tabular-nums">{step.durationMs || 12}ms</span>
+                          <span className="text-slate-500 tabular-nums">{step.durationMs != null ? `${step.durationMs}ms` : '—'}</span>
                           <span
                             className={`font-medium ${
                               step.status === 'success'
@@ -227,7 +229,7 @@ export const ObservabilityExplorer: React.FC<ObservabilityExplorerProps> = ({
                         <div className="p-2.5 rounded-md bg-white/[0.03] border border-white/[0.06] text-[11px] font-mono text-slate-300">
                           <div className="text-[10px] uppercase font-bold text-slate-400 mb-1 flex items-center gap-1">
                             <BrainCircuit className="w-3 h-3 text-blue-400" />
-                            <span>Thinking Process (Argon High)</span>
+                            <span>Thinking trace</span>
                           </div>
                           <div className="whitespace-pre-wrap leading-relaxed">{step.thinkingDetails}</div>
                         </div>

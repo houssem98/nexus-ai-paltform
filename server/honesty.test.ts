@@ -128,6 +128,8 @@ test('analytics outside demo mode are computed from stored executions only', asy
   });
   db.mutate((s) => {
     s.executions.push(run('exec_p1', 'completed', 100, 10, 0.1), run('exec_p2', 'completed', 300, 20, 0.2), run('exec_p3', 'failed', 500, 0, 0));
+    // A simulated run must not count outside demo mode.
+    s.executions.push({ ...run('exec_p4', 'completed', 900, 1000, 9), simulated: true });
   });
   const trends = async () => (await call('GET', '/api/v1/analytics/trends?days=7&agentId=agent_trend_probe')).body;
 
@@ -182,6 +184,61 @@ test('a tool node fails outside demo mode instead of inventing a result', async 
   assert.equal(simulated.simulated, true);
 });
 
+test('deployment runs say when they are simulated, and test-invoke reports real success', async () => {
+  const execute = async () =>
+    (await fetch(`${base}/api/v1/deployments/dep_prod_fin_reconciliation/execute`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer nx_live_98a72b904e5f4b1192da904721' },
+      body: JSON.stringify({ amount: 100 }),
+    })).json();
+  demo(true);
+  assert.equal((await execute()).simulated, true);
+
+  demo(false);
+  const invoked = (await call('POST', '/api/v1/deployments/dep_prod_fin_reconciliation/test-invoke', { amount: 100 })).body;
+  assert.deepEqual({ status: invoked.status, success: invoked.success, durationMs: invoked.durationMs }, { status: 'failed', success: false, durationMs: undefined });
+});
+
+test('records made by demo-only routes are flagged and hidden outside demo mode', async () => {
+  demo(true);
+  const deployment = (await call('POST', '/api/v1/fine-tuning/ft_finance_gemini/deploy')).body.deployment;
+  const run = (await call('POST', '/api/v1/evaluations/runs', {})).body.run;
+  assert.deepEqual([deployment.simulated, run.simulated], [true, true]);
+
+  demo(false);
+  assert.ok(!(await call('GET', '/api/v1/deployments')).body.deployments.some((d: any) => d.id === deployment.id));
+  assert.ok(!(await call('GET', '/api/v1/evaluations')).body.evaluations.runs.some((r: any) => r.id === run.id));
+  const executed = await fetch(base + deployment.endpointUrl, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${deployment.apiKey}` },
+    body: '{}',
+  });
+  assert.equal(executed.status, 501);
+  assert.equal((await call('POST', `/api/v1/deployments/${deployment.id}/test-invoke`, {})).status, 501);
+});
+
+test('connector tests do not mark a connector connected, and new connectors start disconnected', async () => {
+  demo(true);
+  db.mutate((s) => {
+    const crm = s.integrations.find((i) => i.id === 'crm_salesforce')!;
+    crm.status = 'disconnected';
+    delete crm.lastTestedAt;
+  });
+  await call('POST', '/api/v1/integrations/crm_salesforce/test');
+  await call('POST', '/api/v1/integrations/crm_salesforce/sync');
+  const crm = db.getState().integrations.find((i) => i.id === 'crm_salesforce')!;
+  assert.deepEqual({ status: crm.status, lastTestedAt: crm.lastTestedAt }, { status: 'disconnected', lastTestedAt: undefined });
+
+  const created = (await call('POST', '/api/v1/integrations', { name: 'probe', baseUrl: 'https://example.invalid' })).body.integration;
+  assert.deepEqual({ status: created.status, lastTestedAt: created.lastTestedAt }, { status: 'disconnected', lastTestedAt: undefined });
+});
+
+test('demo mode accepts only a boolean', async () => {
+  demo(true);
+  assert.equal((await call('PATCH', '/api/v1/settings', { demoMode: 'false' })).status, 400);
+  assert.equal(db.getState().settings.demoMode, true);
+});
+
 test('/api/v1/me reports demo mode, so the header can say so', async () => {
   demo(true);
   assert.equal((await call('GET', '/api/v1/me')).body.demoMode, true);
@@ -190,20 +247,30 @@ test('/api/v1/me reports demo mode, so the header can say so', async () => {
 });
 
 test('every screen that shows simulated content renders the simulated label', () => {
-  const screens = ['Header', 'ActivityFeed', 'GovernanceSecurity', 'ModelCustomizationStudio', 'DataFoundryStudio', 'RedTeamingSecurityStudio', 'EvaluationLab', 'RoadmapViewer', 'SystemVerifierModal', 'ExecutionTrendsChart', 'IntegrationsCatalog'];
+  const screens = ['Header', 'ActivityFeed', 'GovernanceSecurity', 'AgentStudio', 'ObservabilityExplorer', 'WorkflowLibrary', 'ModelCustomizationStudio', 'DataFoundryStudio', 'RedTeamingSecurityStudio', 'EvaluationLab', 'RoadmapViewer', 'SystemVerifierModal', 'ExecutionTrendsChart', 'IntegrationsCatalog'];
   assert.deepEqual(screens.filter((s) => !read(`../src/components/${s}.tsx`).includes('<SimulatedBadge')), []);
 });
 
 test('no screen or document repeats a retired claim', () => {
   const retired: [string, string[]][] = [
-    ['../src/components/ExecutionTrendsChart.tsx', ['generateFallbackData', '?? 99.4', '|| 1280', "'2,450 tok'", 'Deterministic multi-agent runtime telemetry']],
-    ['../src/components/CommandCenter.tsx', ['99.98% Gateway Uptime', 'All systems nominal', 'mTLS Verified', 'Vector Cache Hit Ratio', "'100.0'", '0.048']],
-    ['../src/components/IntegrationsCatalog.tsx', ['SSRF Guard Nominal', 'Egress requests block local loopbacks', 'SSRF blocklists']],
-    ['../src/components/GovernanceSecurity.tsx', ['immutable event ledger', 'Policies Enforced', 'Compliance Scan Passed']],
+    ['../src/components/ExecutionTrendsChart.tsx', ['generateFallbackData', '?? 99.4', '|| 1280', "'2,450 tok'", 'Deterministic multi-agent runtime telemetry', "|| '0'", "'0.0000'", 'Active Continuous Ingestion']],
+    ['../src/components/CommandCenter.tsx', ['99.98% Gateway Uptime', 'All systems nominal', 'mTLS Verified', 'Vector Cache Hit Ratio', "'100.0'", '0.048', 'Apex Frontier', 'INV-2026-9042', '84,200.00', "'1.24s'", '(MTD)', 'Nexus Cluster v2.4', '6 Tracks']],
+    ['../src/components/IntegrationsCatalog.tsx', ['SSRF Guard Nominal', 'Egress requests block local loopbacks', 'SSRF blocklists', '>Connected<', 'Verified ']],
+    ['../src/components/GovernanceSecurity.tsx', ['immutable event ledger', 'Policies Enforced', 'Compliance Scan Passed', 'Apex Frontier', 'INV-2026-9042', '84,200.00', 'Exceeds auto-posting', 'Immutable', 'Cryptographically', 'Tenant-isolated', 'WORM', 'Policies Updated']],
+    ['../src/components/ActivityFeed.tsx', ['SHA-256', 'immutable', 'isLiveActive', 'events logged']],
+    ['../src/components/DeploymentCenter.tsx', ['SSRF Guard', 'mTLS', 'token bucket', 'immutable', '|| 140', 'Live API Succeeded', 'previous version']],
+    ['../src/components/Header.tsx', ['40/40', '>100%<', 'Live Platform']],
+    ['../src/components/CommandPalette.tsx', ['40/40', 'Live Studio']],
+    ['../src/components/AgentStudio.tsx', ['|| 1240', "'0.0039'", '>Gemini 4 Argon<']],
+    ['../src/components/ObservabilityExplorer.tsx', ['|| 1240', "'0.0037'", "'1.2s'", '|| 12}', 'Terminated pending', 'Argon High']],
+    ['../src/components/WorkflowLibrary.tsx', ['>Published<', 'verified model reasoning']],
+    ['../src/components/WorkflowBuilder.tsx', ['zero deadlocks', 'CFO Human Reviewer', 'SAP ERP Ledger Commit', 'Procurement Policies §4.2', 'setTimeout(r, 350)']],
+    ['../src/components/Sidebar.tsx', ['Reasoning level set to high']],
+    ['../src/components/KnowledgeCenter.tsx', ['Vectors Synced', 'Cosine Threshold', 'Semantic Retrieval', 'vector index']],
     ['../src/components/SystemVerifierModal.tsx', ['compliance-scan', 'elapsed || 24']],
     ['../src/components/RoadmapViewer.tsx', ['100% Verified']],
     ['../src/components/ModelCustomizationStudio.tsx', ["'98.5%'"]],
-    ['../src/components/EvaluationLab.tsx', [": '100%'"]],
+    ['../src/components/EvaluationLab.tsx', [": '100%'", '|| runs[0]', 'Benchmark Passed', '|| 100', 'Gemini 4 Argon']],
     ['../src/components/RedTeamingSecurityStudio.tsx', ['|| 98.4']],
     ['../docs/architecture.md', ['Egress tool invocations validate target hosts']],
   ];
