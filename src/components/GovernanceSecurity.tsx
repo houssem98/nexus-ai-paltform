@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, CheckCircle2, Lock, Download, Settings, Sliders, Check, RotateCw } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, CheckCircle2, Lock, Download, Settings, Sliders, Check, RotateCw } from 'lucide-react';
 import { api } from '../lib/api';
 import { useToast } from '../context/ToastContext';
+import { SimulatedBadge } from './SimulatedBadge';
 
 interface GovernanceSecurityProps {
   approvals: any[];
@@ -17,6 +18,7 @@ export const GovernanceSecurity: React.FC<GovernanceSecurityProps> = ({
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<'approvals' | 'audit' | 'rbac' | 'policies'>('approvals');
   const [auditFilter, setAuditFilter] = useState<string>('all');
+  const [isScanning, setIsScanning] = useState(false);
   const [settings, setSettings] = useState<any>({
     demoMode: true,
     allowedModels: ['gemini-4-argon', 'gemini-3.8-flash', 'gemini-3.1-flash-lite'],
@@ -52,6 +54,19 @@ export const GovernanceSecurity: React.FC<GovernanceSecurityProps> = ({
       toast.success('Audit Log Exported', `Downloaded audit events as .${format.toUpperCase()}`);
     } catch (e: any) {
       toast.error('Export Failed', e?.message || 'Error exporting audit logs');
+    }
+  };
+
+  // Demo only: the server returns a fixed sample result and checks nothing.
+  const handleRunComplianceScan = async () => {
+    setIsScanning(true);
+    try {
+      const res = await api.post<any>('/api/v1/governance/compliance-scan', {});
+      toast.info('Simulated Compliance Scan', `Demo mode: fixed sample result (${res.score}%). Nothing was checked.`);
+    } catch (e: any) {
+      toast.error('Compliance Scan Error', e?.message || 'Failed to execute audit scan');
+    } finally {
+      setIsScanning(false);
     }
   };
 
@@ -117,6 +132,17 @@ export const GovernanceSecurity: React.FC<GovernanceSecurityProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleRunComplianceScan}
+            disabled={isScanning}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-medium transition disabled:opacity-50"
+            title="Demo mode only: returns a fixed sample result; nothing is checked"
+          >
+            <ShieldCheck className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin' : 'text-emerald-400'}`} />
+            <span>{isScanning ? 'Scanning...' : 'Run Compliance Scan'}</span>
+            <SimulatedBadge label="Demo" />
+          </button>
+
           {/* Tab Buttons */}
           <div className="flex items-center gap-1 bg-[#0E121C] p-1 rounded-lg border border-white/[0.08] text-xs">
             <button
@@ -302,7 +328,9 @@ export const GovernanceSecurity: React.FC<GovernanceSecurityProps> = ({
                     <td className="py-3 text-slate-400 font-mono text-[11px] tabular-nums whitespace-nowrap">
                       {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                     </td>
-                    <td className="py-3 font-mono text-slate-200 font-medium">{log.action}</td>
+                    <td className="py-3 font-mono text-slate-200 font-medium">
+                      {log.action} {log.simulated && <SimulatedBadge label="Simulated" />}
+                    </td>
                     <td className="py-3 capitalize text-slate-400">{log.resourceType}</td>
                     <td className="py-3 text-slate-300 max-w-xs truncate">{log.details}</td>
                     <td className="py-3 text-slate-400">{log.userEmail.split('@')[0]}</td>

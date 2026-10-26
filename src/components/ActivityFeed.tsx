@@ -8,6 +8,8 @@ import {
   AlertTriangle,
   Radio,
   Search,
+  Sparkles,
+  ChevronDown,
   ChevronRight,
   ExternalLink,
   RefreshCw,
@@ -21,6 +23,8 @@ import {
   Check,
 } from 'lucide-react';
 import { NavTab } from './Sidebar';
+import { api } from '../lib/api';
+import { SimulatedBadge } from './SimulatedBadge';
 
 export interface AuditEventItem {
   id: string;
@@ -34,6 +38,7 @@ export interface AuditEventItem {
   details: string;
   ipAddress: string;
   timestamp: string;
+  simulated?: boolean;
 }
 
 interface ActivityFeedProps {
@@ -65,6 +70,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [simulating, setSimulating] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isLiveActive, setIsLiveActive] = useState(true);
 
@@ -266,6 +272,19 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
     return counts;
   }, [auditLogs]);
 
+  // Demo only: the server writes an invented sample event, flagged simulated.
+  const handleSimulate = async (type: 'agent' | 'user' | 'system') => {
+    setSimulating(true);
+    try {
+      await api.post('/api/v1/audit-events/simulate', { eventType: type });
+      if (onRefresh) onRefresh();
+    } catch (e) {
+      console.error('Simulation failed:', e);
+    } finally {
+      setSimulating(false);
+    }
+  };
+
   const handleCopyId = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     navigator.clipboard.writeText(id);
@@ -299,6 +318,47 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
 
         {/* Right Action Bar */}
         <div className="flex items-center gap-2">
+          {/* Demo-only sample events */}
+          <div className="relative group">
+            <button
+              disabled={simulating}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-300 hover:text-white text-xs font-medium transition disabled:opacity-50"
+              title="Demo mode only: adds an invented sample event, flagged simulated and never exported"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+              <span>Simulate</span>
+              <SimulatedBadge label="Demo" />
+              <ChevronDown className="w-3 h-3 text-slate-500" />
+            </button>
+
+            <div className="absolute right-0 top-full mt-1.5 w-44 bg-[#0F131D]/95 backdrop-blur-md border border-white/[0.1] rounded-lg shadow-xl p-1 z-30 hidden group-hover:block text-xs animate-in fade-in zoom-in-95 duration-100">
+              <div className="px-2 py-1 text-[10px] uppercase font-semibold text-slate-500 tracking-wider">
+                Sample Event
+              </div>
+              <button
+                onClick={() => handleSimulate('agent')}
+                className="w-full text-left px-2.5 py-1.5 rounded text-slate-300 hover:text-white hover:bg-white/[0.06] flex items-center gap-2 transition"
+              >
+                <Bot className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                <span>Agent Decision</span>
+              </button>
+              <button
+                onClick={() => handleSimulate('user')}
+                className="w-full text-left px-2.5 py-1.5 rounded text-slate-300 hover:text-white hover:bg-white/[0.06] flex items-center gap-2 transition"
+              >
+                <User className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span>User Signoff</span>
+              </button>
+              <button
+                onClick={() => handleSimulate('system')}
+                className="w-full text-left px-2.5 py-1.5 rounded text-slate-300 hover:text-white hover:bg-white/[0.06] flex items-center gap-2 transition"
+              >
+                <Activity className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <span>System Ingress</span>
+              </button>
+            </div>
+          </div>
+
           {/* Refresh Action */}
           {onRefresh && (
             <button
@@ -453,6 +513,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
                         <span className="text-xs font-semibold text-slate-200 group-hover:text-white transition">
                           {cl.displayAction}
                         </span>
+                        {log.simulated && <SimulatedBadge label="Simulated" />}
 
                         {/* Subtle Status Indicator */}
                         <div className="flex items-center gap-1.5 text-[11px] font-mono">

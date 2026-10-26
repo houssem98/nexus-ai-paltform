@@ -113,10 +113,10 @@ No outbound call exists yet, so there is no SSRF today, but connector base URLs 
 Evidence: `server.ts#baseUrl: baseUrl || 'https://api.internal.enterprise/v1',`, `docs/architecture.md#SSRF Prevention`
 Test: L1 T12: assertSafeEgress blocks every egress case in the attack list
 
-### S20 · audit integrity · critical · confidence high
-A route wrote invented actions by named people into the audit log, for example a sign-off on a specific invoice. Fixed in L0 T6: the route and its screen button are gone, and a test asserts the route answers 404; L1 T13 keeps any route from writing caller-supplied audit text.
-Evidence: `server/honesty.test.ts#the compliance scan and the audit simulator are removed`
-Test: L1 T13: no route writes caller-supplied or invented audit records
+### S20 · audit integrity · medium · confidence high
+A route writes invented actions by named people into the audit log, for example a sign-off on a specific invoice. Until L0 T6 these records were indistinguishable from real ones, which made it critical. L0 T6 first removed the route; the human's revised L0 T5 decision brought it back as a demo feature. It now runs only in demo mode, and every record it (or any simulated route) writes is flagged simulated, hidden outside demo mode and never exported. What remains: in demo mode, flagged invented events sit in the same log as real ones.
+Evidence: `server/storage.ts#simulatedScope.getStore()`, `server/honesty.test.ts#simulated audit records appear only in demo mode and never leave in an export`
+Test: L1 T13: every invented audit record is flagged simulated and absent from exports
 
 ### S21 · audit integrity · high · confidence high
 Audit records name the spoofable global user and a fixed placeholder email, not the actor's.
@@ -125,7 +125,7 @@ Test: L1 T13: an audit record names the session user and that user's email
 
 ### S22 · audit integrity · high · confidence high
 Audit reads and exports return every org's events.
-Evidence: `server.ts#res.json({ auditLogs: state.auditLogs.slice(0, 50) });`, `server.ts#const logs = state.auditLogs;`
+Evidence: `server.ts#res.json({ auditLogs: visible.slice(0, 50) });`, `server.ts#const logs = state.auditLogs.filter((l) => !l.simulated);`
 Test: L1 T13: a cross-tenant audit export returns none of the other org's events
 
 ### S23 · audit integrity · medium · confidence high

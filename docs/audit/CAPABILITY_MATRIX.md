@@ -2,7 +2,7 @@
 
 L0 T3, written 2026-10-25 against commit e8bea89. Every route handler in `server.ts` was read; every file in `src/components` was searched for API calls and fixed figures. `server/capability-matrix.test.ts` fails when a route registered in `server.ts` or a file in `src/components` has no row, when a row names a route that no longer exists, or when a REAL row does not name an existing test. `scripts/graph-lint.mjs` checks every citation on each `npm run gate`.
 
-Updated in L0 T6 (2026-10-26): the compliance scan and the audit simulator are gone, every SIMULATED route now answers only in demo mode and says `simulated: true`, analytics outside demo mode are computed from stored executions, and rows checked by `server/honesty.test.ts` name their test.
+Updated in L0 T6 (2026-10-26): every SIMULATED route now answers only in demo mode and says `simulated: true`, and every audit record such a route writes is flagged simulated, hidden outside demo mode and never exported. The compliance scan and the audit simulator were first removed, then restored as labeled demo features by the human's revised L0 T5 decision. Also, analytics outside demo mode are computed from stored executions, and rows checked by `server/honesty.test.ts` name their test.
 
 ## Status words
 
@@ -20,7 +20,7 @@ From section 2 of `docs/roadmap/NEXUS_WORLD_CLASS_ROADMAP.md`, made precise for 
 
 ## API routes
 
-In registration order, 60 rows.
+In registration order, 62 rows.
 
 | Method | Path | Status | Evidence | Known by |
 |---|---|---|---|---|
@@ -59,9 +59,10 @@ In registration order, 60 rows.
 | POST | `/api/v1/deployments` | BROKEN | Key built from Math.random; the workflow is looked up in any org, falling back to the first in the store; the deploy-approval setting is ignored: `server.ts#const randomHex = Math.random().toString(36).substring(2, 10);`, `server.ts#const workflow = state.workflows.find((w) => w.id === workflowId)` | read |
 | PATCH | `/api/v1/deployments/:id/status` | BROKEN | Any org's deployment, set to any string: `server.ts#dep.status = status;` | read |
 | DELETE | `/api/v1/deployments/:id` | BROKEN | Any org's deployment: `server.ts#const idx = s.deployments.findIndex((d) => d.id === req.params.id);` | read |
-| GET | `/api/v1/audit-events` | BROKEN | Every org's events: `server.ts#res.json({ auditLogs: state.auditLogs.slice(0, 50) });` | read |
+| GET | `/api/v1/audit-events` | BROKEN | Every org's events; simulated records are hidden outside demo mode: `server.ts#res.json({ auditLogs: visible.slice(0, 50) });` | read; test: simulated audit records appear only in demo mode and never leave in an export |
+| POST | `/api/v1/audit-events/simulate` | SIMULATED | Demo mode only, by the human's revised L0 T5 decision. Writes invented sample events by named people, each flagged simulated, so they show only in demo mode and never in an export: `server.ts#app.post('/api/v1/audit-events/simulate', demoOnly,`, `server/storage.ts#simulatedScope.getStore()` | read; test: simulated audit records appear only in demo mode and never leave in an export |
 | GET | `/api/v1/approvals` | BROKEN | Every org's approvals: `server.ts#res.json({ approvals: state.approvals });` | read |
-| GET | `/api/v1/audit-events/export` | BROKEN | Exports every org's events, unsigned: `server.ts#const logs = state.auditLogs;` | read |
+| GET | `/api/v1/audit-events/export` | BROKEN | Exports every org's events, unsigned; never includes simulated records: `server.ts#const logs = state.auditLogs.filter((l) => !l.simulated);` | read; test: simulated audit records appear only in demo mode and never leave in an export |
 | GET | `/api/v1/settings` | UNVERIFIED | One settings object shared by every org: `server.ts#res.json({ settings: state.settings });` | read |
 | PATCH | `/api/v1/settings` | BROKEN | Any caller changes settings for every org, and nothing reads them afterwards: `server.ts#state.settings.demoMode = demoMode;` | read |
 | GET | `/api/v1/fine-tuning` | BROKEN | Demo mode only, marked simulated (`server.ts#app.get('/api/v1/fine-tuning', demoOnly,`). Still returns every org's jobs: `server.ts#jobs: state.fineTuningJobs,` | read; test: the fine-tuning, data foundry and red-teaming studios answer only in demo mode, marked simulated |
@@ -81,6 +82,7 @@ In registration order, 60 rows.
 | GET | `/api/v1/system/self-test` | SIMULATED | Demo mode only, marked simulated. Fixed latencies; suites pass unconditionally or when a list is non-empty: `server.ts#latencyMs: 14,`, `server.ts#zero cyclical deadlocks` | read; test: the self-test answers only in demo mode, marked simulated |
 | POST | `/api/v1/deployments/:id/test-invoke` | BROKEN | Runs any org's deployment without a key: `server.ts#/api/v1/deployments/:id/test-invoke` No caller in src. | read |
 | POST | `/api/v1/knowledge/reindex-all` | BROKEN | Touches every org's documents and logs a full rebuild that did not happen: `server.ts#state.knowledge.forEach((doc) => {`, `server.ts#VECTOR_INDEX_FULL_REBUILD` | read |
+| POST | `/api/v1/governance/compliance-scan` | SIMULATED | Demo mode only, by the human's revised L0 T5 decision; marked simulated, and its audit record is flagged. Fixed SOC2, ISO 27001 and HIPAA passes that nothing checks: `server.ts#score: 99.4,`, `server.ts#Zero critical vulnerabilities found.` | read; test: the compliance scan and the audit simulator answer only in demo mode, marked simulated |
 | POST | `/api/v1/agents/:id/duplicate` | BROKEN | Copies any org's agent, and the copy keeps that org: `server.ts#const existing = state.agents.find((a) => a.id === req.params.id);`, `server.ts#const clone = JSON.parse(JSON.stringify(existing));` | read |
 | POST | `/api/v1/workflows/:id/duplicate` | BROKEN | Copies any org's workflow, and the copy keeps that org: `server.ts#const existing = state.workflows.find((w) => w.id === req.params.id);` | read |
 | POST | `/api/v1/integrations/:id/sync` | SIMULATED | Demo mode only, marked simulated. No network call: a random record count, and the shared connector is marked connected: `server.ts#recordsSynced: Math.floor(120 + Math.random() * 250),` | read; test: integration tests and syncs answer only in demo mode, marked simulated |
@@ -91,7 +93,7 @@ One row per file in `src/components`. A screen is SIMULATED when what it mainly 
 
 | Component | Status | Evidence | Known by |
 |---|---|---|---|
-| `src/components/ActivityFeed.tsx` | BROKEN | Shows every org's audit events from the unfiltered audit route: `src/components/ActivityFeed.tsx#{auditLogs.length} events logged`. Its simulate button is gone since L0 T6. | searched; test: no screen or document repeats a retired claim |
+| `src/components/ActivityFeed.tsx` | BROKEN | Shows every org's audit events from the unfiltered audit route: `src/components/ActivityFeed.tsx#{auditLogs.length} events logged`. Its demo-only simulate button is labeled, and simulated events carry a badge. | searched; test: every screen that shows simulated content renders the simulated label |
 | `src/components/AgentStudio.tsx` | PARTIAL | Creates, edits, tests and copies agents through the PARTIAL and BROKEN agent routes: `src/components/AgentStudio.tsx#const res = await api.post<any>('/api/v1/agents', {` | searched |
 | `src/components/Breadcrumbs.tsx` | UNVERIFIED | No API call found. | searched |
 | `src/components/CommandCenter.tsx` | BROKEN | Lists every org's pending approvals from the unfiltered approvals route: `src/components/CommandCenter.tsx#const pendingApprovals = approvals.filter((a) => a.status === 'pending');`. Its hard-coded uptime, cache ratio and cost floor are gone since L0 T6, and the success rate shows a dash when there are no runs. | searched; test: no screen or document repeats a retired claim |
@@ -100,7 +102,7 @@ One row per file in `src/components`. A screen is SIMULATED when what it mainly 
 | `src/components/DeploymentCenter.tsx` | BROKEN | Shows and copies the key of every deployment the list route returns: `src/components/DeploymentCenter.tsx#navigator.clipboard.writeText(selectedDep.apiKey);` | searched |
 | `src/components/EvaluationLab.tsx` | SIMULATED | Labeled. Shows the evaluation route's copied 100% results; outcome and score now come from the run instead of a fixed Passed and 100%: `src/components/EvaluationLab.tsx#const res = await api.post<any>('/api/v1/evaluations/runs', {` | searched; test: every screen that shows simulated content renders the simulated label |
 | `src/components/ExecutionTrendsChart.tsx` | PARTIAL | Shows computed trends outside demo mode, labels the blend inside it, and shows dashes instead of its own random data when the request fails: `src/components/ExecutionTrendsChart.tsx#Computed from stored executions` | searched; test: no screen or document repeats a retired claim |
-| `src/components/GovernanceSecurity.tsx` | BROKEN | Exports every org's audit events and edits settings shared by every org: `src/components/GovernanceSecurity.tsx#/api/v1/audit-events/export?format=${format}`. Its compliance scan is gone since L0 T6. | searched; test: no screen or document repeats a retired claim |
+| `src/components/GovernanceSecurity.tsx` | BROKEN | Exports every org's audit events and edits settings shared by every org: `src/components/GovernanceSecurity.tsx#/api/v1/audit-events/export?format=${format}`. Its demo-only compliance scan button is labeled, and simulated audit rows carry a badge. | searched; test: every screen that shows simulated content renders the simulated label |
 | `src/components/Header.tsx` | UNVERIFIED | No API call found. Shows the demo-mode label when the me route says so: `src/components/Header.tsx#demoMode && <SimulatedBadge` | searched; test: every screen that shows simulated content renders the simulated label |
 | `src/components/IntegrationsCatalog.tsx` | SIMULATED | Labeled. Shows the simulated test and sync results, and no longer claims an egress guard: `src/components/IntegrationsCatalog.tsx#/api/v1/integrations/${id}/sync` | searched; test: no screen or document repeats a retired claim |
 | `src/components/KnowledgeCenter.tsx` | BROKEN | Its search returns other orgs' documents: `src/components/KnowledgeCenter.tsx#const res = await api.post<any>('/api/v1/knowledge/search', { query: searchQuery });` | searched |

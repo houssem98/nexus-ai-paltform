@@ -2,7 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { db } from './server/storage';
+import { db, simulatedScope } from './server/storage';
 import { validateGraph, runWorkflowExecution, executeAgentDirectly } from './server/engine';
 
 dotenv.config();
@@ -33,9 +33,10 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// Simulated features answer only in demo mode, and their responses say simulated: true.
+// Simulated features answer only in demo mode, their responses say simulated: true,
+// and every audit record they write is flagged simulated.
 const demoOnly = (req: Request, res: Response, next: NextFunction) => {
-  if (db.getState().settings.demoMode) return next();
+  if (db.getState().settings.demoMode) return simulatedScope.run(true, next);
   res.status(501).json({ error: 'This feature is simulated and runs only in demo mode.' });
 };
 
@@ -1049,9 +1050,127 @@ app.delete('/api/v1/deployments/:id', (req: Request, res: Response) => {
 });
 
 // ==================== GOVERNANCE & AUDIT ====================
+// Simulated audit records are shown only in demo mode and never exported.
 app.get('/api/v1/audit-events', (req: Request, res: Response) => {
   const state = db.getState();
-  res.json({ auditLogs: state.auditLogs.slice(0, 50) });
+  const visible = state.auditLogs.filter((l) => state.settings.demoMode || !l.simulated);
+  res.json({ auditLogs: visible.slice(0, 50) });
+});
+
+// Demo only: writes invented sample events, each flagged simulated.
+app.post('/api/v1/audit-events/simulate', demoOnly, (req: Request, res: Response) => {
+  const { eventType } = req.body;
+  let action = 'GATEWAY_HEALTH_CHECK';
+  let resourceType: any = 'integration';
+  let details = 'System ingress verified 99.98% uptime across edge nodes (latency 38ms).';
+  let userId = 'sys_ingress_gateway';
+  let userEmail = 'ingress@nexus-cluster.internal';
+
+  if (eventType === 'agent') {
+    const agentSamples = [
+      {
+        action: 'AGENT_DECISION_QUARANTINE',
+        resourceType: 'agent' as const,
+        details: 'SecOps Autonomous Agent isolated suspect endpoint 192.168.4.110 after correlating MITRE T1059 attack signature.',
+        userId: 'agent_cyber_triage',
+        userEmail: 'agent.triage@nexus.internal',
+      },
+      {
+        action: 'AGENT_FORENSIC_VARIANCE_CLEARED',
+        resourceType: 'agent' as const,
+        details: 'Forensic Audit Agent cross-referenced SAP ERP rate cards against PO-88190 and cleared $14,200 discount discrepancy.',
+        userId: 'agent_invoice_auditor',
+        userEmail: 'agent.auditor@nexus.internal',
+      },
+      {
+        action: 'AGENT_REASONING_CHAIN_EXECUTED',
+        resourceType: 'agent' as const,
+        details: 'Gemini 4 Argon formulated policy reasoning synthesis under High Thinking mode (1,480 reasoning tokens generated).',
+        userId: 'agent_contract_analyst',
+        userEmail: 'agent.contract@nexus.internal',
+      },
+    ];
+    const picked = agentSamples[Math.floor(Math.random() * agentSamples.length)];
+    action = picked.action;
+    resourceType = picked.resourceType;
+    details = picked.details;
+    userId = picked.userId;
+    userEmail = picked.userEmail;
+  } else if (eventType === 'user') {
+    const userSamples = [
+      {
+        action: 'APPROVAL_AUTHORIZED',
+        resourceType: 'approval' as const,
+        details: 'Alexandra Vance (Lead Architect) signed off on high-value invoice INV-2026-9042 ($84,200.00).',
+        userId: 'usr_admin',
+        userEmail: 'alex.vance@nexus-enterprise.internal',
+      },
+      {
+        action: 'WORKFLOW_DEPLOYED_STAGING',
+        resourceType: 'workflow' as const,
+        details: 'Devin Marcus pushed revised SOC Threat Response DAG (v2) to Staging environment.',
+        userId: 'usr_builder',
+        userEmail: 'devin.marcus@nexus-enterprise.internal',
+      },
+      {
+        action: 'SECURITY_TOKEN_ROTATED',
+        resourceType: 'security' as const,
+        details: 'Elena Rostova refreshed mTLS service certificates for production Snowflake connector.',
+        userId: 'usr_operator',
+        userEmail: 'elena.rostova@nexus-enterprise.internal',
+      },
+    ];
+    const picked = userSamples[Math.floor(Math.random() * userSamples.length)];
+    action = picked.action;
+    resourceType = picked.resourceType;
+    details = picked.details;
+    userId = picked.userId;
+    userEmail = picked.userEmail;
+  } else {
+    const sysSamples = [
+      {
+        action: 'DEPLOYMENT_TRAFFIC_SHIFTED',
+        resourceType: 'deployment' as const,
+        details: 'Canary routing rules updated: 15% production traffic allocated to endpoint /v1/pipelines/soc-triage.',
+        userId: 'sys_canary_ingress',
+        userEmail: 'mesh@nexus-cluster.internal',
+      },
+      {
+        action: 'VECTOR_INDEX_OPTIMIZED',
+        resourceType: 'knowledge' as const,
+        details: 'Vector database re-indexed 2,410 chunks across Enterprise Compliance corpus with 0.82 cosine threshold.',
+        userId: 'sys_vector_db',
+        userEmail: 'pgvector@nexus-cluster.internal',
+      },
+      {
+        action: 'SYSTEM_AUTOSCALE_TRIGGERED',
+        resourceType: 'execution' as const,
+        details: 'Inference worker pool autoscaled from 4 to 8 instances to satisfy peak forensic throughput.',
+        userId: 'sys_orchestrator',
+        userEmail: 'kubernetes@nexus-cluster.internal',
+      },
+    ];
+    const picked = sysSamples[Math.floor(Math.random() * sysSamples.length)];
+    action = picked.action;
+    resourceType = picked.resourceType;
+    details = picked.details;
+    userId = picked.userId;
+    userEmail = picked.userEmail;
+  }
+
+  const newLog = db.logAudit({
+    orgId: currentOrgId,
+    workspaceId: currentWorkspaceId,
+    userId,
+    userEmail,
+    action,
+    resourceType,
+    resourceId: `res_${Date.now()}`,
+    details,
+    ipAddress: (req.ip as string) || '10.240.4.18',
+  });
+
+  res.status(201).json({ auditLog: newLog, auditLogs: db.getState().auditLogs.slice(0, 50), simulated: true });
 });
 
 app.get('/api/v1/approvals', (req: Request, res: Response) => {
@@ -1063,7 +1182,7 @@ app.get('/api/v1/approvals', (req: Request, res: Response) => {
 app.get('/api/v1/audit-events/export', (req: Request, res: Response) => {
   const { format } = req.query;
   const state = db.getState();
-  const logs = state.auditLogs;
+  const logs = state.auditLogs.filter((l) => !l.simulated);
 
   if (format === 'csv') {
     const headers = ['id', 'timestamp', 'action', 'resourceType', 'resourceId', 'userId', 'userEmail', 'ipAddress', 'details'];
@@ -2001,6 +2120,39 @@ app.post('/api/v1/knowledge/reindex-all', (req: Request, res: Response) => {
     reindexedCount: updatedDocs.length,
     timestamp: new Date().toISOString(),
   });
+});
+
+// Demo only: a fixed sample compliance result. Nothing is checked.
+app.post('/api/v1/governance/compliance-scan', demoOnly, (req: Request, res: Response) => {
+  const state = db.getState();
+  const scanResults = {
+    scanId: `scan_${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    status: 'COMPLIANT',
+    score: 99.4,
+    findings: [
+      { rule: 'SOC2-CC6.1', category: 'Authentication & Access', status: 'PASS', details: 'All 6 enterprise roles enforce least-privilege scoping' },
+      { rule: 'OWASP-LLM01', category: 'Prompt Injection Defense', status: 'PASS', details: 'Delimiter inversion and jailbreak heuristics active' },
+      { rule: 'NIST-AI-100', category: 'Explainability & Reasoning', status: 'PASS', details: 'Thinking tokens recorded in distributed traces' },
+      { rule: 'ISO-27001-A.12', category: 'Audit Logging & Integrity', status: 'PASS', details: `${state.auditLogs.length} immutable events verified without tampering` },
+      { rule: 'HIPAA-164.312', category: 'Data Redaction & PII', status: 'PASS', details: 'Regex and NER redaction pipeline enabled across inputs' },
+    ],
+    summary: 'Full enterprise compliance check verified across 18 operational controls. Zero critical vulnerabilities found.',
+  };
+
+  db.logAudit({
+    orgId: currentOrgId,
+    workspaceId: currentWorkspaceId,
+    userId: currentUserId,
+    userEmail: 'security@nexus.internal',
+    action: 'SECURITY_AUDIT_EXECUTED',
+    resourceType: 'security',
+    resourceId: scanResults.scanId,
+    details: 'Automated compliance scan completed with 99.4% security score.',
+    ipAddress: req.ip || '127.0.0.1',
+  });
+
+  res.json({ ...scanResults, simulated: true });
 });
 
 // Duplicate agent

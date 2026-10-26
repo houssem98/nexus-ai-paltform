@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'async_hooks';
 import fs from 'fs';
 import path from 'path';
 
@@ -244,6 +245,7 @@ export interface AuditEvent {
   details: string;
   ipAddress: string;
   timestamp: string;
+  simulated?: boolean;
 }
 
 export interface ApprovalRequest {
@@ -372,6 +374,9 @@ export interface PlatformState {
     dataRetentionDays: number;
   };
 }
+
+// Active while a simulated (demo-only) route runs, so every audit record it writes is flagged.
+export const simulatedScope = new AsyncLocalStorage<true>();
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const DATA_FILE = path.join(DATA_DIR, 'nexus-store.json');
@@ -1449,6 +1454,7 @@ class StorageManager {
   public logAudit(event: Omit<AuditEvent, 'id' | 'timestamp'>) {
     const auditEvent: AuditEvent = {
       ...event,
+      ...(simulatedScope.getStore() ? { simulated: true } : {}),
       id: `aud_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       timestamp: new Date().toISOString(),
     };

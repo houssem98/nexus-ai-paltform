@@ -32,18 +32,26 @@ async function call(method: string, url: string, body?: unknown) {
 const demo = (on: boolean) => db.mutate((s) => { s.settings.demoMode = on; });
 const read = (rel: string) => fs.readFileSync(new URL(rel, import.meta.url), 'utf-8');
 
+// A simulated route refuses outside demo mode and writes nothing; in demo mode it says simulated,
+// and every audit record it writes is flagged simulated.
 async function assertDemoOnly(routes: [string, string, unknown?][]) {
+  const auditCount = () => db.getState().auditLogs.length;
   demo(false);
   for (const [method, url, body] of routes) {
+    const before = auditCount();
     const res = await call(method, url, body);
     assert.equal(res.status, 501, `${method} ${url} outside demo mode`);
     assert.equal(res.body?.simulated, undefined, `${method} ${url}: a refusal carries no simulated flag`);
+    assert.equal(auditCount(), before, `${method} ${url}: a refusal writes no audit record`);
   }
   demo(true);
   for (const [method, url, body] of routes) {
+    const before = auditCount();
     const res = await call(method, url, body);
     assert.ok(res.status < 300, `${method} ${url} in demo mode got ${res.status}`);
     assert.equal(res.body?.simulated, true, `${method} ${url} in demo mode must say simulated`);
+    const written = db.getState().auditLogs.slice(0, auditCount() - before);
+    assert.ok(written.every((l) => l.simulated === true), `${method} ${url} wrote an unflagged audit record`);
   }
 }
 
@@ -63,10 +71,28 @@ test('the fine-tuning, data foundry and red-teaming studios answer only in demo 
     ['PATCH', '/api/v1/red-teaming/guardrails', { piiMasking: true }],
   ]));
 
-test('the compliance scan and the audit simulator are removed', async () => {
+test('the compliance scan and the audit simulator answer only in demo mode, marked simulated', () =>
+  assertDemoOnly([
+    ['POST', '/api/v1/governance/compliance-scan', {}],
+    ['POST', '/api/v1/audit-events/simulate', { eventType: 'user' }],
+  ]));
+
+test('simulated audit records appear only in demo mode and never leave in an export', async () => {
   demo(true);
-  assert.equal((await call('POST', '/api/v1/governance/compliance-scan', {})).status, 404);
-  assert.equal((await call('POST', '/api/v1/audit-events/simulate', { eventType: 'user' })).status, 404);
+  const simulated = (await call('POST', '/api/v1/audit-events/simulate', { eventType: 'user' })).body.auditLog;
+  const agent = (await call('POST', '/api/v1/agents', { name: 'audit probe' })).body.agent;
+  const real = db.getState().auditLogs.find((l) => l.resourceId === agent.id)!;
+  assert.equal(real.simulated, undefined);
+
+  const listed = async () => (await call('GET', '/api/v1/audit-events')).body.auditLogs.map((l: any) => l.id);
+  assert.ok((await listed()).includes(simulated.id));
+  const json = (await call('GET', '/api/v1/audit-events/export?format=json')).body.logs.map((l: any) => l.id);
+  const csv = await (await fetch(`${base}/api/v1/audit-events/export?format=csv`)).text();
+  assert.ok(json.includes(real.id) && !json.includes(simulated.id), 'JSON export');
+  assert.ok(csv.includes(real.id) && !csv.includes(simulated.id), 'CSV export');
+
+  demo(false);
+  assert.ok(!(await listed()).includes(simulated.id));
 });
 
 test('the self-test answers only in demo mode, marked simulated', () => assertDemoOnly([['GET', '/api/v1/system/self-test']]));
@@ -164,7 +190,7 @@ test('/api/v1/me reports demo mode, so the header can say so', async () => {
 });
 
 test('every screen that shows simulated content renders the simulated label', () => {
-  const screens = ['Header', 'ModelCustomizationStudio', 'DataFoundryStudio', 'RedTeamingSecurityStudio', 'EvaluationLab', 'RoadmapViewer', 'SystemVerifierModal', 'ExecutionTrendsChart', 'IntegrationsCatalog'];
+  const screens = ['Header', 'ActivityFeed', 'GovernanceSecurity', 'ModelCustomizationStudio', 'DataFoundryStudio', 'RedTeamingSecurityStudio', 'EvaluationLab', 'RoadmapViewer', 'SystemVerifierModal', 'ExecutionTrendsChart', 'IntegrationsCatalog'];
   assert.deepEqual(screens.filter((s) => !read(`../src/components/${s}.tsx`).includes('<SimulatedBadge')), []);
 });
 
@@ -173,8 +199,7 @@ test('no screen or document repeats a retired claim', () => {
     ['../src/components/ExecutionTrendsChart.tsx', ['generateFallbackData', '?? 99.4', '|| 1280', "'2,450 tok'", 'Deterministic multi-agent runtime telemetry']],
     ['../src/components/CommandCenter.tsx', ['99.98% Gateway Uptime', 'All systems nominal', 'mTLS Verified', 'Vector Cache Hit Ratio', "'100.0'", '0.048']],
     ['../src/components/IntegrationsCatalog.tsx', ['SSRF Guard Nominal', 'Egress requests block local loopbacks', 'SSRF blocklists']],
-    ['../src/components/GovernanceSecurity.tsx', ['compliance-scan', 'immutable event ledger', 'Policies Enforced']],
-    ['../src/components/ActivityFeed.tsx', ['audit-events/simulate']],
+    ['../src/components/GovernanceSecurity.tsx', ['immutable event ledger', 'Policies Enforced', 'Compliance Scan Passed']],
     ['../src/components/SystemVerifierModal.tsx', ['compliance-scan', 'elapsed || 24']],
     ['../src/components/RoadmapViewer.tsx', ['100% Verified']],
     ['../src/components/ModelCustomizationStudio.tsx', ["'98.5%'"]],
