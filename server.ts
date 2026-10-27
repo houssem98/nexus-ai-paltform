@@ -2,7 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { db, simulatedScope, settingsOf, guardrailsOf, orgView, type User } from './server/storage';
+import { db, simulatedScope, settingsOf, guardrailsOf, orgView, newId, type User } from './server/storage';
 import { validateGraph, runWorkflowExecution, executeAgentDirectly } from './server/engine';
 import { allowed } from './server/permissions';
 import { apiKeyMatches, hashApiKey, newApiKey, publicDeployment } from './server/auth';
@@ -130,7 +130,7 @@ app.get('/api/v1/agents/:id', (req: Request, res: Response) => {
 app.post('/api/v1/agents', (req: Request, res: Response) => {
   const { name, description, department, model, systemPrompt, tools, thinkingMode, thinkingLevel } = req.body;
   const newAgent = db.mutate((state) => {
-    const id = `agent_${Date.now()}`;
+    const id = newId('agent');
     const agent = {
       id,
       orgId: res.locals.orgId,
@@ -257,7 +257,7 @@ app.get('/api/v1/workflows/:id', (req: Request, res: Response) => {
 app.post('/api/v1/workflows', (req: Request, res: Response) => {
   const { name, description, department, category, nodes, edges } = req.body;
   const workflow = db.mutate((state) => {
-    const id = `wf_${Date.now()}`;
+    const id = newId('wf');
     const wf = {
       id,
       orgId: res.locals.orgId,
@@ -342,7 +342,7 @@ app.post('/api/v1/workflows/:id/execute', async (req: Request, res: Response) =>
     return res.status(404).json({ error: 'Workflow not found' });
   }
 
-  const executionId = `exec_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const executionId = newId('exec');
   const executionRecord = {
     id: executionId,
     orgId: res.locals.orgId,
@@ -627,7 +627,7 @@ app.post('/api/v1/knowledge', (req: Request, res: Response) => {
 
   const doc = db.mutate((state) => {
     const newDoc = {
-      id: `kb_${Date.now()}`,
+      id: newId('kb'),
       orgId: res.locals.orgId,
       workspaceId: res.locals.workspaceId,
       title: title || 'Untitled Enterprise Policy',
@@ -768,7 +768,7 @@ app.post('/api/v1/integrations/:id/test', demoOnly, (req: Request, res: Response
 app.post('/api/v1/integrations', (req: Request, res: Response) => {
   const { name, category, description, baseUrl, authType, permissionsRequired } = req.body;
   const newIntegration = db.mutate((state) => {
-    const id = `int_${Date.now()}`;
+    const id = newId('int');
     const item = {
       id,
       orgId: res.locals.orgId,
@@ -840,7 +840,7 @@ app.get('/api/v1/evaluations', (req: Request, res: Response) => {
 app.post('/api/v1/evaluations/datasets', (req: Request, res: Response) => {
   const { name, description, cases } = req.body;
   const newDataset = db.mutate((state) => {
-    const id = `ds_${Date.now()}`;
+    const id = newId('ds');
     const ds = {
       id,
       orgId: res.locals.orgId,
@@ -900,7 +900,7 @@ app.post('/api/v1/evaluations/runs', demoOnly, async (req: Request, res: Respons
   }));
 
   const runRecord = {
-    id: `eval_run_${Date.now()}`,
+    id: newId('eval_run'),
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     datasetId: dataset.id,
@@ -975,7 +975,7 @@ app.post('/api/v1/deployments/:id/execute', async (req: Request, res: Response) 
   deployment.lastInvokedAt = new Date().toISOString();
 
   // Run the underlying workflow
-  const executionId = `exec_dep_${Date.now()}`;
+  const executionId = newId('exec_dep');
   const executionRecord = {
     id: executionId,
     orgId: deployment.orgId,
@@ -1015,7 +1015,7 @@ app.post('/api/v1/deployments', (req: Request, res: Response) => {
 
   const key = newApiKey();
   const newDeployment = db.mutate((s) => {
-    const id = `dep_${Date.now()}`;
+    const id = newId('dep');
     const slug = (name || workflow.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     const dep = {
       id,
@@ -1365,7 +1365,7 @@ app.get('/api/v1/fine-tuning', demoOnly, (req: Request, res: Response) => {
 app.post('/api/v1/fine-tuning', demoOnly, (req: Request, res: Response) => {
   const { name, baseModel, method, datasetName, datasetSize, learningRate, epochs, loraRank, loraAlpha, batchSize } = req.body;
   const newJob = db.mutate((state) => {
-    const id = `ft_job_${Date.now()}`;
+    const id = newId('ft_job');
     const job = {
       id,
       orgId: res.locals.orgId,
@@ -1426,7 +1426,7 @@ app.post('/api/v1/fine-tuning/:id/deploy', demoOnly, (req: Request, res: Respons
   const job = state.fineTuningJobs.find((j) => j.id === req.params.id && j.orgId === res.locals.orgId);
   if (!job) return res.status(404).json({ error: 'Job not found' });
 
-  const depId = `dep_ft_${Date.now()}`;
+  const depId = newId('dep_ft');
   const key = newApiKey();
   const deployment = db.mutate((s) => {
     const dep = {
@@ -1488,7 +1488,7 @@ app.post('/api/v1/data-foundry/generate', demoOnly, (req: Request, res: Response
   const numCount = Number(count) || 500;
 
   const dataset = db.mutate((state) => {
-    const id = `syn_${Date.now()}`;
+    const id = newId('syn');
     const newDs = {
       id,
       orgId: res.locals.orgId,
@@ -1578,7 +1578,7 @@ app.get('/api/v1/red-teaming', demoOnly, (req: Request, res: Response) => {
 app.post('/api/v1/red-teaming/execute', demoOnly, (req: Request, res: Response) => {
   const { targetModel, attackVector } = req.body;
   const newRun = db.mutate((state) => {
-    const id = `red_${Date.now()}`;
+    const id = newId('red');
     const total = 100;
     const blocked = 98;
     const breached = 2;
@@ -1732,7 +1732,7 @@ app.get('/api/v1/roadmap', demoOnly, (req: Request, res: Response) => {
           { name: 'Runtime Inspection & Stack Selection', status: 'verified', note: 'Node.js Express backend + React Vite SPA on port 3000' },
           { name: 'Architecture Documentation', status: 'verified', note: '/docs/architecture.md and complete PRD roadmap specifications' },
           { name: 'Design Tokens & Glassmorphism Navigation', status: 'verified', note: 'Dark Linear aesthetic, backdrop-blur-md, zero-pill typography' },
-          { name: 'Persistent Store & Migrations', status: 'verified', note: 'ACID-safe persistent state in /data/nexus-store.json' },
+          { name: 'Persistent Store & Migrations', status: 'verified', note: 'SQLite store in data/nexus.db; each write is one transaction, tested for restart, crash and same-millisecond creates' },
         ],
       },
       {
@@ -1866,7 +1866,7 @@ app.get('/api/v1/roadmap', demoOnly, (req: Request, res: Response) => {
       { id: 14, text: 'Invoke that deployment through an authenticated REST API', met: true, evidence: 'POST /api/v1/deployments/:id/execute with Bearer key' },
       { id: 15, text: 'View audit events for important actions in live activity stream', met: true, evidence: `${state.auditLogs.length} audit logs in ActivityFeed` },
       { id: 16, text: 'Verify cross-tenant isolation prevents unauthorized access', met: true, evidence: 'Scoped queries by orgId and workspaceId' },
-      { id: 17, text: 'Restart runtime without losing persisted state (/data/nexus-store.json)', met: true, evidence: 'Persistent JSON store with ACID updates' },
+      { id: 17, text: 'Restart runtime without losing persisted state (data/nexus.db)', met: true, evidence: 'server/storage.test.ts: state survives a restart' },
       { id: 18, text: 'See honest errors when a provider or connector is unavailable', met: true, evidence: 'Zero-trust egress guard with explicit error responses' },
     ],
     scalePlatformTracks: [
@@ -2126,7 +2126,7 @@ app.post('/api/v1/deployments/:id/test-invoke', async (req: Request, res: Respon
     return res.status(501).json({ error: 'This deployment was made by a simulated feature and runs only in demo mode.' });
   }
 
-  const executionId = `exec_dep_test_${Date.now()}`;
+  const executionId = newId('exec_dep_test');
   const executionRecord = {
     id: executionId,
     orgId: deployment.orgId,
@@ -2233,9 +2233,9 @@ app.post('/api/v1/agents/:id/duplicate', (req: Request, res: Response) => {
   if (!existing) return res.status(404).json({ error: 'Agent not found' });
 
   const cloned = db.mutate((s) => {
-    const newId = `agent_${Date.now()}`;
+    const cloneId = newId('agent');
     const clone = JSON.parse(JSON.stringify(existing));
-    clone.id = newId;
+    clone.id = cloneId;
     clone.name = `${existing.name} (Copy)`;
     clone.createdAt = new Date().toISOString();
     clone.updatedAt = new Date().toISOString();
@@ -2265,9 +2265,9 @@ app.post('/api/v1/workflows/:id/duplicate', (req: Request, res: Response) => {
   if (!existing) return res.status(404).json({ error: 'Workflow not found' });
 
   const cloned = db.mutate((s) => {
-    const newId = `wf_${Date.now()}`;
+    const cloneId = newId('wf');
     const clone = JSON.parse(JSON.stringify(existing));
-    clone.id = newId;
+    clone.id = cloneId;
     clone.name = `${existing.name} (Copy)`;
     clone.createdAt = new Date().toISOString();
     clone.updatedAt = new Date().toISOString();

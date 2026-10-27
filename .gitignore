@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# The store (SQLite since L1 T10, plus the JSON file it may have been imported from). Never committed.
+data/

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // npm test — runs server/**/*.test.ts with node:test through tsx.
 //
-// Test processes start in a fresh temporary working directory, so storage (DATA_DIR = cwd/data) never touches the
-// tracked data/nexus-store.json. Fails when zero tests ran: node:test alone exits 0 when no file matches.
+// Test processes start in a fresh temporary working directory, so storage (DATA_DIR = cwd/data) never opens the
+// repository's store in data/. Fails when zero tests ran: node:test alone exits 0 when no file matches.
 import { run } from 'node:test';
 import { spec } from 'node:test/reporters';
 import { globSync, mkdtempSync } from 'node:fs';

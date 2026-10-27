@@ -11,7 +11,7 @@ Read every tick together with the active ledger. The global rules in `~/.claude/
 - I5 Cite what you claim. Every statement about current code in a doc or ledger cites `path#literal` copied from a file read this tick, or a whole `path`. Never write a citation you did not just read. graph-lint must pass.
 - I6 Response shapes that `src/` reads stay compatible unless the same task updates every consumer; `src/lib/api.ts` and the components use them untyped.
 - I7 No new dependency or infrastructure without a failing test that needs it and the human's approval. `node:` built-in modules are not new dependencies.
-- I8 Tests never write `data/nexus-store.json`; git tracks it.
+- I8 Tests never open the repository's store in data/ (nexus.db since L1 T10, the nexus-store.json file before); git ignores data/ since L1 T10. `server/storage.test.ts#the suite never touches data/nexus-store.json` checks it.
 - I9 Secrets never enter the repo, logs, reports, or the client bundle.
 - I10 Status words are passed, failed, blocked, skipped, not tested, and nothing else (`roadmap/worldclassroadmap.md#Honest status: distinguish passed, failed, blocked, skipped, and not tested.`).
 - I11 Smallest safe change: improve the code in place, no rewrites (`roadmap/worldclassroadmap.md#Preserve working features and avoid unnecessary rewrites.`).

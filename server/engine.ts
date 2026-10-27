@@ -1,5 +1,5 @@
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
-import { db, settingsOf, Workflow, WorkflowNode, WorkflowEdge, ExecutionRecord, NodeExecutionRecord } from './storage';
+import { db, settingsOf, newId, Workflow, WorkflowNode, WorkflowEdge, ExecutionRecord, NodeExecutionRecord } from './storage';
 
 // Initialize Gemini client on server with required User-Agent
 const ai = process.env.GEMINI_API_KEY
@@ -399,7 +399,7 @@ export async function runWorkflowExecution(executionId: string): Promise<Executi
         // Create approval request in database
         db.mutate((s) => {
           s.approvals.push({
-            id: `appr_${Date.now()}`,
+            id: newId('appr'),
             orgId: execution.orgId,
             workspaceId: execution.workspaceId,
             executionId: execution.id,

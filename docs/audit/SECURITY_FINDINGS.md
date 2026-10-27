@@ -99,8 +99,8 @@ Test: L1 T7: a new key has 32 bytes from node:crypto randomBytes
 
 ### S14 · secrets · high · confidence high
 Keys are stored in plaintext in the store file, which git tracks, so every key created while the app runs lands in the working tree and can be committed.
-Fixed in L1 T7: the store holds a SHA-256 hash of each key. Keys stored in plain text before L1 T7 count as leaked and stop working at the next boot, so those deployments must be published again.
-Evidence: `server/storage.ts#apiKeyHash: string;`, `server/storage.ts#d.apiKeyHash ??= unusableKeyHash();`, `server/storage.ts#const DATA_FILE = path.join(DATA_DIR, 'nexus-store.json');`, `server/tenancy.test.ts#a stored deployment holds a key hash, not the key`
+Fixed in L1 T7: the store holds a SHA-256 hash of each key. Keys stored in plain text before L1 T7 count as leaked and stop working at the next boot, so those deployments must be published again. Since L1 T10 git ignores the store.
+Evidence: `server/storage.ts#apiKeyHash: string;`, `server/storage.ts#d.apiKeyHash ??= unusableKeyHash();`, `server/storage.ts#this.file = path.join(dir, 'nexus.db');`, `server/tenancy.test.ts#a stored deployment holds a key hash, not the key`
 Test: L1 T7: a stored deployment holds a key hash, not the key
 
 ### S15 · secrets · medium · confidence medium
@@ -153,8 +153,8 @@ Test: L1 T13: a CSV cell starting with =, +, - or @ is neutralized
 
 ### S24 · persistence · high · confidence high
 Every change rewrites the whole store file in place, so a crash or a full disk during a write leaves a truncated file. A full disk is not hypothetical on this machine: the L0 T0 install failed with ENOSPC at 0 bytes free on 2026-10-25.
-Fixed in L1 T8: a change goes to a flushed temporary file that is renamed over the store.
-Evidence: `server/storage.ts#fs.renameSync(tmp, DATA_FILE);`, `server/storage.test.ts#a simulated crash mid-write leaves the previous state readable`
+Fixed in L1 T8: a change went to a flushed temporary file renamed over the store. Since L1 T10 a change is one SQLite transaction, and the test fails the second row of a two-row write.
+Evidence: `server/storage.ts#this.sql.exec('BEGIN IMMEDIATE');`, `server/storage.test.ts#a simulated crash mid-write leaves the previous state readable`
 Test: L1 T8: a simulated crash mid-write leaves the previous state readable
 
 ### S25 · persistence · high · confidence high
@@ -169,9 +169,10 @@ Fixed in L1 T8 for synchronous routes: the write error reaches the request, whic
 Evidence: `server/storage.ts#this.state = this.loadState();`, `server/storage.test.ts#a write error returns 5xx`
 Test: L1 T8: a write error returns 5xx
 
-### S27 · persistence · medium · confidence medium
+### S27 · persistence · medium · confidence high
 Handlers mutate shared state across awaits and outside the store's mutation function, so concurrent requests can lose updates. Not reproduced yet, hence medium confidence.
-Evidence: `server.ts#db.mutate((s) => s);`, `server.ts#const executed = await runWorkflowExecution(executionId);`
+Reproduced in L1 T10: ids were built from Date.now(), so records created in the same millisecond shared one id, and a database keyed by id would keep only one of them. Fixed in L1 T10: ids carry random bytes, and each write is one transaction. Handlers still change records outside the mutation function; the in-memory model saves those changes with the next write.
+Evidence: `server.ts#db.mutate((s) => s);`, `server.ts#const executed = await runWorkflowExecution(executionId);`, `server/storage.ts#export const newId = (prefix: string) =>`, `server/storage.test.ts#two interleaved mutating requests lose no update`
 Test: L1 T10: two interleaved mutating requests lose no update
 
 ### S28 · secrets · critical · confidence high

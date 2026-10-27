@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'async_hooks';
 import { createHash, randomBytes } from 'crypto';
 import fs from 'fs';
+import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
 import path from 'path';
 
 export interface User {
@@ -391,7 +392,25 @@ export interface OrgSettings {
 export const simulatedScope = new AsyncLocalStorage<true>();
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
-const DATA_FILE = path.join(DATA_DIR, 'nexus-store.json');
+
+// L1 T10: each list of PlatformState is one SQLite table of (id, org_id, the record as JSON); settings and guardrails,
+// keyed by org, are two more; list_order keeps each list's order, which handlers rely on (newest first, for example).
+const LISTS: Record<string, string> = {
+  organizations: 'organizations', workspaces: 'workspaces', users: 'users', agents: 'agents', workflows: 'workflows',
+  executions: 'executions', knowledge: 'knowledge', integrations: 'integrations', evaluation_datasets: 'evaluations.datasets',
+  evaluation_runs: 'evaluations.runs', deployments: 'deployments', audit_logs: 'auditLogs', approvals: 'approvals',
+  fine_tuning_jobs: 'fineTuningJobs', synthetic_datasets: 'syntheticDatasets', red_teaming_runs: 'redTeamingRuns',
+};
+const MAPS: Record<string, string> = { settings: 'settings', guardrails: 'guardrails' };
+const at = (state: any, p: string) => p.split('.').reduce((o, k) => o[k], state);
+const put = (state: any, p: string, value: unknown) => {
+  const [a, b] = p.split('.');
+  if (b) (state[a] ??= {})[b] = value;
+  else state[a] = value;
+};
+
+// Unique even for records made in the same millisecond, which ids built from Date.now() alone were not.
+export const newId = (prefix: string) => `${prefix}_${Date.now()}_${randomBytes(4).toString('hex')}`;
 
 // The hash of a key nobody holds.
 const unusableKeyHash = () => createHash('sha256').update(randomBytes(32)).digest('hex');
@@ -1427,67 +1446,149 @@ When a security alert reports an anomalous egress connection or credential stuff
   };
 }
 
-class StorageManager {
-  private state: PlatformState;
-
-  constructor() {
-    this.state = this.loadState();
+// Before L1 T10 the store was one JSON file. It is imported once into an empty database, then left in place and ignored.
+function readJsonStore(file: string): PlatformState {
+  const seed = getInitialSeedData();
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    if (!Array.isArray(parsed?.organizations)) throw new Error('it holds no organizations');
+  } catch (e) {
+    // Never replace a damaged store with seed data: that would silently delete every tenant's records.
+    throw new Error(`The store file ${file} cannot be read (${(e as Error).message}). Restore it from a backup or move it aside; it was left untouched.`);
   }
-
-  private loadState(): PlatformState {
-    const seed = getInitialSeedData();
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    if (!fs.existsSync(DATA_FILE)) {
-      this.saveState(seed);
-      return seed;
+  // Ensure new Scale AI entities are populated if loading an existing older state file
+  if (!parsed.fineTuningJobs) parsed.fineTuningJobs = seed.fineTuningJobs;
+  if (!parsed.syntheticDatasets) parsed.syntheticDatasets = seed.syntheticDatasets;
+  if (!parsed.redTeamingRuns) parsed.redTeamingRuns = seed.redTeamingRuns;
+  if (!parsed.guardrails) parsed.guardrails = seed.guardrails;
+  // Before L1 T4, settings and guardrails were one object for every org, and integrations had no org.
+  const first = parsed.organizations[0]?.id;
+  if ('demoMode' in parsed.settings) parsed.settings = Object.fromEntries(parsed.organizations.map((o: Organization) => [o.id, structuredClone(parsed.settings)]));
+  if ('piiMasking' in parsed.guardrails) parsed.guardrails = Object.fromEntries(parsed.organizations.map((o: Organization) => [o.id, structuredClone(parsed.guardrails)]));
+  // Before L1 T7, API keys sat in plain text in a git-tracked file, so they count as leaked: each such deployment
+  // gets the hash of a key nobody holds and answers no caller until it is published again.
+  for (const d of parsed.deployments) {
+    if ('apiKey' in d) {
+      delete d.apiKey;
+      d.apiKeyHash ??= unusableKeyHash();
     }
-    let parsed;
+  }
+  for (const i of parsed.integrations) {
+    i.orgId ??= first;
+    i.workspaceId ??= parsed.workspaces.find((w: Workspace) => w.orgId === first)?.id;
+  }
+  // Two records of one list with one id would become one row: refuse rather than lose one.
+  for (const [table, p] of Object.entries(LISTS)) {
+    const ids = at(parsed, p).map((r: { id: string }) => r.id);
+    if (new Set(ids).size !== ids.length) throw new Error(`The store file ${file} holds two ${table} records with one id; fix it, then start again.`);
+  }
+  return parsed;
+}
+
+export class StorageManager {
+  private state: PlatformState;
+  private sql: DatabaseSync;
+  readonly file: string;
+  // What the database holds, as the JSON each row was written with, so a write sends only what changed.
+  private saved = new Map<string, string>();
+  private statements = new Map<string, StatementSync>();
+
+  constructor(dir = DATA_DIR) {
+    fs.mkdirSync(dir, { recursive: true });
+    this.file = path.join(dir, 'nexus.db');
     try {
-      parsed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
-      if (!Array.isArray(parsed?.organizations)) throw new Error('it holds no organizations');
+      this.sql = new DatabaseSync(this.file);
+      this.sql.exec('PRAGMA journal_mode = WAL');
+      for (const table of [...Object.keys(LISTS), ...Object.keys(MAPS)]) {
+        this.sql.exec(`CREATE TABLE IF NOT EXISTS ${table} (id TEXT PRIMARY KEY, org_id TEXT NOT NULL, body TEXT NOT NULL)`);
+      }
+      this.sql.exec('CREATE TABLE IF NOT EXISTS list_order (name TEXT PRIMARY KEY, ids TEXT NOT NULL)');
     } catch (e) {
       // Never replace a damaged store with seed data: that would silently delete every tenant's records.
-      throw new Error(`The store file ${DATA_FILE} cannot be read (${(e as Error).message}). Restore it from a backup or move it aside; it was left untouched.`);
+      throw new Error(`The store file ${this.file} cannot be read (${(e as Error).message}). Restore it from a backup or move it aside; it was left untouched.`);
     }
-    // Ensure new Scale AI entities are populated if loading an existing older state file
-    if (!parsed.fineTuningJobs) parsed.fineTuningJobs = seed.fineTuningJobs;
-    if (!parsed.syntheticDatasets) parsed.syntheticDatasets = seed.syntheticDatasets;
-    if (!parsed.redTeamingRuns) parsed.redTeamingRuns = seed.redTeamingRuns;
-    if (!parsed.guardrails) parsed.guardrails = seed.guardrails;
-    // Before L1 T4, settings and guardrails were one object for every org, and integrations had no org.
-    const first = parsed.organizations[0]?.id;
-    if ('demoMode' in parsed.settings) parsed.settings = Object.fromEntries(parsed.organizations.map((o: Organization) => [o.id, structuredClone(parsed.settings)]));
-    if ('piiMasking' in parsed.guardrails) parsed.guardrails = Object.fromEntries(parsed.organizations.map((o: Organization) => [o.id, structuredClone(parsed.guardrails)]));
-    // Before L1 T7, API keys sat in plain text in a git-tracked file, so they count as leaked: each such deployment
-    // gets the hash of a key nobody holds and answers no caller until it is published again.
-    for (const d of parsed.deployments) {
-      if ('apiKey' in d) {
-        delete d.apiKey;
-        d.apiKeyHash ??= unusableKeyHash();
+    // The first write of a store fills list_order, so an empty one means nothing was ever stored.
+    const fresh = (this.run('SELECT count(*) AS n FROM list_order', 'get') as { n: number }).n === 0;
+    const json = path.join(dir, 'nexus-store.json');
+    this.state = fresh ? (fs.existsSync(json) ? readJsonStore(json) : getInitialSeedData()) : this.loadState();
+    if (fresh) this.persist();
+  }
+
+  private run(query: string, how: 'run' | 'get' | 'all', ...params: SQLInputValue[]) {
+    let statement = this.statements.get(query);
+    if (!statement) this.statements.set(query, (statement = this.sql.prepare(query)));
+    return statement[how](...params);
+  }
+
+  // The state as the database holds it, which is also what the next write is compared with.
+  private loadState(): PlatformState {
+    const state: any = {};
+    this.saved.clear();
+    const order = new Map((this.run('SELECT name, ids FROM list_order', 'all') as { name: string; ids: string }[]).map((r) => [r.name, r.ids]));
+    for (const [table, p] of Object.entries(LISTS)) {
+      const rows = new Map((this.run(`SELECT id, body FROM ${table}`, 'all') as { id: string; body: string }[]).map((r) => [r.id, r.body]));
+      const listed: string[] = JSON.parse(order.get(table) ?? '[]');
+      const ids = [...listed.filter((id) => rows.has(id)), ...[...rows.keys()].filter((id) => !listed.includes(id))];
+      put(state, p, ids.map((id) => JSON.parse(rows.get(id)!)));
+      for (const id of ids) this.saved.set(`${table}\0${id}`, rows.get(id)!);
+      this.saved.set(`order\0${table}`, JSON.stringify(ids));
+    }
+    for (const [table, p] of Object.entries(MAPS)) {
+      const rows = this.run(`SELECT id, body FROM ${table}`, 'all') as { id: string; body: string }[];
+      put(state, p, Object.fromEntries(rows.map((r) => [r.id, JSON.parse(r.body)])));
+      for (const r of rows) this.saved.set(`${table}\0${r.id}`, r.body);
+    }
+    return state;
+  }
+
+  // One transaction per write: every changed row, removed row and changed order, or none of them.
+  private persist() {
+    const writes: [string, string, string, string][] = [];
+    const orders: [string, string][] = [];
+    const seen = new Set<string>();
+    for (const [table, p] of Object.entries(LISTS)) {
+      const list = at(this.state, p) as { id: string; orgId?: string }[];
+      for (const r of list) {
+        const body = JSON.stringify(r);
+        seen.add(`${table}\0${r.id}`);
+        if (this.saved.get(`${table}\0${r.id}`) !== body) writes.push([table, r.id, r.orgId ?? r.id, body]);
+      }
+      const ids = JSON.stringify(list.map((r) => r.id));
+      if (this.saved.get(`order\0${table}`) !== ids) orders.push([table, ids]);
+    }
+    for (const [table, p] of Object.entries(MAPS)) {
+      for (const [id, value] of Object.entries(at(this.state, p))) {
+        const body = JSON.stringify(value);
+        seen.add(`${table}\0${id}`);
+        if (this.saved.get(`${table}\0${id}`) !== body) writes.push([table, id, id, body]);
       }
     }
-    for (const i of parsed.integrations) {
-      i.orgId ??= first;
-      i.workspaceId ??= parsed.workspaces.find((w: Workspace) => w.orgId === first)?.id;
-    }
-    return parsed;
-  }
-
-  // Write a flushed temporary file and rename it over the store, so a crash leaves the old file or the new one, never half.
-  private saveState(state: PlatformState) {
-    const tmp = `${DATA_FILE}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(state, null, 2), { encoding: 'utf-8', flush: true });
-    fs.renameSync(tmp, DATA_FILE);
-  }
-
-  // A failed write fails the caller, and memory goes back to what the disk holds.
-  private persist() {
+    const removed = [...this.saved.keys()].filter((k) => !k.startsWith('order\0') && !seen.has(k)).map((k) => k.split('\0'));
+    if (!writes.length && !orders.length && !removed.length) return;
     try {
-      this.saveState(this.state);
+      this.sql.exec('BEGIN IMMEDIATE');
+      for (const [table, id, org, body] of writes) {
+        this.run(`INSERT INTO ${table} (id, org_id, body) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET org_id = excluded.org_id, body = excluded.body`, 'run', id, org, body);
+      }
+      for (const [table, id] of removed) this.run(`DELETE FROM ${table} WHERE id = ?`, 'run', id);
+      for (const [table, ids] of orders) {
+        this.run('INSERT INTO list_order (name, ids) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET ids = excluded.ids', 'run', table, ids);
+      }
+      this.sql.exec('COMMIT');
     } catch (e) {
+      // A failed write fails the caller, and memory goes back to what the disk holds.
+      try {
+        this.sql.exec('ROLLBACK');
+      } catch {
+        // Nothing to roll back: the failure came before the transaction began.
+      }
       this.state = this.loadState();
       throw e;
     }
+    for (const [table, id, , body] of writes) this.saved.set(`${table}\0${id}`, body);
+    for (const [table, id] of removed) this.saved.delete(`${table}\0${id}`);
+    for (const [table, ids] of orders) this.saved.set(`order\0${table}`, ids);
   }
 
   public getState(): PlatformState {
@@ -1504,7 +1605,7 @@ class StorageManager {
     const auditEvent: AuditEvent = {
       ...event,
       ...(simulatedScope.getStore() ? { simulated: true } : {}),
-      id: `aud_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      id: newId('aud'),
       timestamp: new Date().toISOString(),
     };
     this.state.auditLogs.unshift(auditEvent);

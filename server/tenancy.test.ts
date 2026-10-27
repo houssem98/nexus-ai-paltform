@@ -611,7 +611,9 @@ test('a stored deployment holds a key hash, not the key', async () => {
   const stored = db.getState().deployments.find((d) => d.id === dep.id)!;
   assert.equal(stored.apiKeyHash, hashApiKey(dep.apiKey));
   assert.ok(!JSON.stringify(db.getState()).includes(dep.apiKey), 'the store');
-  assert.ok(!fs.readFileSync(path.join(process.cwd(), 'data', 'nexus-store.json'), 'utf-8').includes(dep.apiKey), 'the store file');
+  for (const file of fs.readdirSync(path.join(process.cwd(), 'data'))) {
+    assert.ok(!fs.readFileSync(path.join(process.cwd(), 'data', file)).includes(dep.apiKey), `the store file ${file}`);
+  }
 });
 
 test('key verification compares hashes with timingSafeEqual', async () => {
