@@ -798,3 +798,116 @@ test('repeated failed sign-ins for one account get 429', async () => {
   assert.ok(Number(locked.headers.get('retry-after')) > 0);
   assert.equal((await login(users.b_evaluator.email, password(users.b_evaluator))).status, 200, 'other accounts are not affected');
 });
+
+// L1 T13: the audit log is the org's own, written only by server code, naming the real actor, and exported safely.
+// A small RFC 4180 reader: quoted cells may hold commas, doubled quotes and line breaks.
+const parseCsv = (text: string) => {
+  const rows: string[][] = [];
+  let row: string[] = [], cell = '', quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+      else if (c === '"') quoted = false;
+      else cell += c;
+    } else if (c === '"') quoted = true;
+    else if (c === ',') { row.push(cell); cell = ''; }
+    else if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
+    else if (c !== '\r') cell += c;
+  }
+  row.push(cell);
+  rows.push(row);
+  return rows;
+};
+const exportCsv = async (user: User) => {
+  if (!cookies.has(user.id)) cookies.set(user.id, await signIn(user));
+  return (await fetch(`${base}/api/v1/audit-events/export?format=csv`, { headers: { cookie: cookies.get(user.id)! } })).text();
+};
+const newest = () => db.getState().auditLogs[0];
+
+test("a cross-tenant audit export returns none of the other org's events", async () => {
+  const aIds = db.getState().auditLogs.filter((l) => l.orgId === 'org_a').map((l) => l.id);
+  assert.ok(aIds.length > 0, 'org A has events to leak');
+  const json = JSON.stringify((await B('GET', '/api/v1/audit-events/export?format=json')).body);
+  const csv = await exportCsv(users.b_org_admin);
+  for (const id of aIds) assert.ok(!json.includes(id) && !csv.includes(id), id);
+  assert.ok((await exportCsv(users.a_org_admin)).includes(aIds[0]), "org A's own export holds them");
+});
+
+test('a CSV cell starting with =, +, - or @ is neutralized', async () => {
+  const event = db.logAudit({ orgId: 'org_b', workspaceId: 'ws_b', userId: '@SUM(A1)', userEmail: '+cmd|calc', action: '-2+3', resourceType: 'security', resourceId: '=HYPERLINK("http://x")', details: '=1+1', ipAddress: '\t=1' });
+  const row = parseCsv(await exportCsv(users.b_org_admin)).find((r) => r[0] === event.id)!;
+  assert.ok(row, 'the event is exported');
+  for (const cell of row.slice(2)) assert.doesNotMatch(cell, /^[=+\-@\t\r]/, `cell ${cell}`);
+  assert.equal(row[8], "'=1+1", 'the value is kept, behind a quote mark');
+});
+
+test('every CSV export row parses to nine cells, whatever the input', async () => {
+  const details = 'a "quoted", multi\nline\r\nvalue, with "commas", and ""doubled"" quotes';
+  const event = db.logAudit({ orgId: 'org_b', workspaceId: 'ws_b', userId: 'x","y', userEmail: 'e@x.test",forged', action: 'A,B', resourceType: 'security', resourceId: 'r\nnew row', details, ipAddress: '1.2.3.4' });
+  const rows = parseCsv(await exportCsv(users.b_org_admin));
+  for (const r of rows) assert.equal(r.length, 9, JSON.stringify(r).slice(0, 120));
+  const row = rows.find((r) => r[0] === event.id)!;
+  assert.deepEqual([row[2], row[5], row[6], row[8]], ['A,B', 'x","y', 'e@x.test",forged', details]);
+});
+
+test('no route lets a caller write the actor, action or org of an audit record', async () => {
+  // Audit routes only read, apart from the demo-only simulator, which picks among fixed events.
+  assert.deepEqual(registered().filter((r) => r.includes('/audit-events')).sort(), ['GET /api/v1/audit-events', 'GET /api/v1/audit-events/export', 'POST /api/v1/audit-events/simulate']);
+  const sim = await B('POST', '/api/v1/audit-events/simulate', { eventType: 'user', action: 'FORGED', details: 'forged text', userId: 'usr_a_org_admin', orgId: 'org_a' });
+  assert.equal(sim.status, 201);
+  assert.ok(!JSON.stringify(newest()).includes('FORGED') && !JSON.stringify(newest()).includes('forged text') && newest().orgId === 'org_b');
+  // Every audit write in the server takes its actor, action, type and org from server state, never from the request.
+  const src = fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf-8').replace(/\r/g, '');
+  for (const call of src.matchAll(/db\.logAudit\(\{([\s\S]*?)\n\s*\}\);/g)) {
+    for (const line of call[1].split('\n').filter((l) => /^\s*(orgId|workspaceId|userId|userEmail|action|resourceType):/.test(l))) {
+      assert.doesNotMatch(line, /req\.(body|query|headers|params)/, line.trim());
+    }
+  }
+});
+
+test('every invented audit record is flagged simulated and absent from exports', async () => {
+  const before = new Set(db.getState().auditLogs.map((l) => l.id));
+  for (const eventType of ['agent', 'user', 'system']) assert.equal((await B('POST', '/api/v1/audit-events/simulate', { eventType })).status, 201);
+  assert.equal((await B('POST', '/api/v1/governance/compliance-scan')).status, 200);
+  const invented = db.getState().auditLogs.filter((l) => !before.has(l.id));
+  assert.ok(invented.length >= 3);
+  assert.ok(invented.every((l) => l.simulated === true), 'every one is flagged');
+  const json = JSON.stringify((await B('GET', '/api/v1/audit-events/export?format=json')).body);
+  const csv = await exportCsv(users.b_org_admin);
+  for (const l of invented) assert.ok(!json.includes(l.id) && !csv.includes(l.id), l.id);
+});
+
+test("an audit record names the session user and that user's email", async () => {
+  await made(as(users.b_builder)('POST', '/api/v1/agents', { name: 'named' }), 'agent');
+  assert.deepEqual([newest().userId, newest().userEmail], ['usr_b_builder', 'builder@org-b.test']);
+  // No audit write that names the session user carries a made-up address.
+  const src = fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf-8').replace(/\r/g, '');
+  assert.doesNotMatch(src, /userId: res\.locals\.userId,\n\s*userEmail: '/);
+});
+
+test('cancelling a finished execution gets 409 and writes no audit record', async () => {
+  const wf = await made(B('POST', '/api/v1/workflows', { name: 'finishes' }), 'workflow');
+  const done = await made(B('POST', `/api/v1/workflows/${wf.id}/execute`, {}), 'execution');
+  assert.ok(['completed', 'failed'].includes(done.status));
+  const count = db.getState().auditLogs.length;
+  assert.equal((await B('POST', `/api/v1/executions/${done.id}/cancel`)).status, 409);
+  assert.equal(db.getState().auditLogs.length, count, 'no audit record');
+  assert.equal(db.getState().executions.find((e) => e.id === done.id)!.status, done.status, 'the outcome stands');
+  // A run still in progress can be cancelled, and that is recorded.
+  const id = runningExecution();
+  assert.equal((await B('POST', `/api/v1/executions/${id}/cancel`)).status, 200);
+  assert.deepEqual([newest().action, newest().resourceId, newest().userId], ['EXECUTION_CANCELLED', id, 'usr_b_org_admin']);
+  assert.equal((await B('POST', `/api/v1/executions/${id}/cancel`)).status, 409, 'a second cancel');
+});
+
+test('editing a workflow graph writes an audit record naming the editor', async () => {
+  const wf = await made(B('POST', '/api/v1/workflows', { name: 'edited' }), 'workflow');
+  const nodes = [
+    { id: 's', type: 'start', label: 'Start', position: { x: 0, y: 0 }, config: {} },
+    { id: 'e', type: 'end', label: 'End', position: { x: 0, y: 0 }, config: {} },
+  ];
+  assert.equal((await as(users.b_builder)('PUT', `/api/v1/workflows/${wf.id}`, { nodes, edges: [{ id: 'x', source: 's', target: 'e' }] })).status, 200);
+  assert.deepEqual([newest().action, newest().resourceId, newest().userId, newest().userEmail], ['WORKFLOW_UPDATED', wf.id, 'usr_b_builder', 'builder@org-b.test']);
+  assert.match(newest().details, /graph/, 'it says the graph changed');
+});

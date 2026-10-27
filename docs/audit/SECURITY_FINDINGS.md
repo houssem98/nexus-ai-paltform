@@ -135,22 +135,23 @@ Test: L1 T12: assertSafeEgress blocks every egress case in the attack list
 
 ### S20 · audit integrity · medium · confidence high
 A route writes invented actions by named people into the audit log, for example a sign-off on a specific invoice. Until L0 T6 these records were indistinguishable from real ones, which made it critical. L0 T6 first removed the route; the human's revised L0 T5 decision brought it back as a demo feature. It now runs only in demo mode, and every record it (or any simulated route) writes is flagged simulated, hidden outside demo mode and never exported. What remains: in demo mode, flagged invented events sit in the same log as real ones.
-Evidence: `server/storage.ts#simulatedScope.getStore()`, `server/honesty.test.ts#simulated audit records appear only in demo mode and never leave in an export`
+Evidence: `server/storage.ts#simulatedScope.getStore()`, `server/honesty.test.ts#simulated audit records appear only in demo mode and never leave in an export`, `server/tenancy.test.ts#every invented audit record is flagged simulated and absent from exports`
 Test: L1 T13: every invented audit record is flagged simulated and absent from exports
 
 ### S21 · audit integrity · high · confidence high
-Audit records name the spoofable global user and a fixed placeholder email, not the actor's. Since L1 T3 the user id is the signed-in user's; most records still carry a placeholder email.
-Evidence: `server.ts#userEmail: 'user@nexus.internal',`, `server.ts#userId: res.locals.userId,`
+Audit records name the spoofable global user and a fixed placeholder email, not the actor's. Since L1 T3 the user id is the signed-in user's. Fixed in L1 T13: every record that names the session user also carries that user's email; only the demo simulator's invented events and the engine's own records name other actors.
+Evidence: `server.ts#userId: res.locals.userId,`, `server.ts#userEmail: res.locals.user.email,`, `server/tenancy.test.ts#an audit record names the session user and that user's email`
 Test: L1 T13: an audit record names the session user and that user's email
 
 ### S22 · audit integrity · high · confidence high
-Audit reads and exports returned every org's events; since L1 T4 they return only the caller's org's.
-Evidence: `server.ts#res.json({ auditLogs: visible.slice(0, 50) });`, `server.ts#const logs = state.auditLogs.filter((l) => l.orgId === res.locals.orgId && !l.simulated);`
+Audit reads and exports returned every org's events. Fixed in L1 T4: they return only the caller's org's, proven for both export formats in L1 T13.
+Evidence: `server.ts#res.json({ auditLogs: visible.slice(0, 50) });`, `server.ts#const logs = state.auditLogs.filter((l) => l.orgId === res.locals.orgId && !l.simulated);`, `server/tenancy.test.ts#a cross-tenant audit export returns none of the other org's events`
 Test: L1 T13: a cross-tenant audit export returns none of the other org's events
 
 ### S23 · audit integrity · medium · confidence high
 The CSV export quotes cells but does not neutralize formulas, so a value starting with `=` runs as a formula when opened in a spreadsheet.
-Evidence: `server.ts#nexus_audit_events.csv`, `server.ts#.replace(/"/g, '""')`
+Fixed in L1 T13: a cell that starts with =, +, -, @, a tab or a carriage return is written behind a leading quote mark, so a spreadsheet shows it as text.
+Evidence: `server.ts#nexus_audit_events.csv`, `server.ts#a value a spreadsheet would run`, `server/tenancy.test.ts#a CSV cell starting with =, +, - or @ is neutralized`
 Test: L1 T13: a CSV cell starting with =, +, - or @ is neutralized
 
 ### S24 · persistence · high · confidence high
@@ -196,12 +197,14 @@ Test: L1 T11: an invoice without a numeric, non-negative amount is refused befor
 
 ### S31 · workflow integrity · medium · confidence high
 A run that stops early is stored as completed: at the step cap, or at a node with no outgoing edge. The engine never reads a cancellation, so cancel cannot stop a run, and the approval branch overwrites it. Cancelling a finished run still answers 200 and writes a cancellation to the audit log. Reproduced: a self-loop completed after 25 nodes; cancelling a completed run returned 200 with a new audit record. The step cap is L2 T8 and cancellation L2 T6.
-Evidence: `server/engine.ts#if (execution.status === 'running') {`, `server/engine.ts#const maxSteps = 25;`, `server.ts#Execution ${req.params.id} cancelled by operator.`
+Partly fixed in L1 T13: cancelling a completed, failed or cancelled run answers 409 and writes nothing. Still open: the engine never reads a cancellation (L2 T6), and a run stopped by the step cap or a dead end is stored completed (L2 T8).
+Evidence: `server/engine.ts#if (execution.status === 'running') {`, `server/engine.ts#const maxSteps = 25;`, `server.ts#if (found && ['completed', 'failed', 'cancelled'].includes(found.status)) {`, `server/tenancy.test.ts#cancelling a finished execution gets 409 and writes no audit record`
 Test: L1 T13: cancelling a finished execution gets 409 and writes no audit record
 
 ### S32 · audit integrity · high · confidence high
 Editing a workflow rewrites the active version's graph in place, whether published or deployed, and writes no audit record, so a live deployment silently runs the edited graph, for example one without its approval node. Deployment runs and test-invokes also write no audit record. Frozen versions are L3 T3.
-Evidence: `server.ts#activeVer.nodes = nodes;`
+Partly fixed in L1 T13: editing a workflow writes an audit record naming the editor and whether the graph changed. Still open: the edit still rewrites the active version that live deployments run (frozen versions are L3 T3), and deployment runs and test-invokes write no audit record.
+Evidence: `server.ts#activeVer.nodes = nodes;`, `server.ts#action: 'WORKFLOW_UPDATED',`, `server/tenancy.test.ts#editing a workflow graph writes an audit record naming the editor`
 Test: L1 T13: editing a workflow graph writes an audit record naming the editor
 
 ### S33 · workflow integrity · medium · confidence medium
@@ -212,7 +215,8 @@ Test: L1 T11: agent output cannot overwrite the workflow input
 
 ### S34 · audit integrity · medium · confidence high
 The CSV export escapes quotes only in the details cell. The action, user, resource and address cells take raw values, some caller-controlled (the user header, a deployment status), so a quote or a newline adds columns or whole forged rows. S23 covers formulas only.
-Evidence: `server.ts#"${log.userId}"`, `server.ts#DEPLOYMENT_${(status as string).toUpperCase()}`
+Fixed in L1 T13: every cell is quoted with its quotes doubled, so no value adds a cell or a row; line breaks stay inside their quoted cell, as RFC 4180 allows.
+Evidence: `server.ts#.map(cell).join(',')`, `server.ts#DEPLOYMENT_${(status as string).toUpperCase()}`, `server/tenancy.test.ts#every CSV export row parses to nine cells, whatever the input`
 Test: L1 T13: every CSV export row parses to nine cells, whatever the input
 
 ### S35 · persistence · medium · confidence high

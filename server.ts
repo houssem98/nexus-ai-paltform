@@ -205,7 +205,7 @@ app.post('/api/v1/agents', (req: Request, res: Response) => {
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'user@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'AGENT_CREATED',
     resourceType: 'agent',
     resourceId: newAgent.id,
@@ -246,7 +246,7 @@ app.put('/api/v1/agents/:id', (req: Request, res: Response) => {
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'user@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'AGENT_UPDATED',
     resourceType: 'agent',
     resourceId: updated.id,
@@ -325,7 +325,7 @@ app.post('/api/v1/workflows', (req: Request, res: Response) => {
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'user@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'WORKFLOW_CREATED',
     resourceType: 'workflow',
     resourceId: workflow.id,
@@ -360,6 +360,19 @@ app.put('/api/v1/workflows/:id', (req: Request, res: Response) => {
   });
 
   if (!updated) return res.status(404).json({ error: 'Workflow not found' });
+
+  db.logAudit({
+    orgId: res.locals.orgId,
+    workspaceId: res.locals.workspaceId,
+    userId: res.locals.userId,
+    userEmail: res.locals.user.email,
+    action: 'WORKFLOW_UPDATED',
+    resourceType: 'workflow',
+    resourceId: updated.id,
+    details: `Edited "${updated.name}"${nodes && edges ? `, replacing the graph of version ${updated.activeVersion}` : ''}.`,
+    ipAddress: req.ip || '127.0.0.1',
+  });
+
   res.json({ workflow: updated });
 });
 
@@ -402,7 +415,7 @@ app.post('/api/v1/workflows/:id/execute', safe(async (req: Request, res: Respons
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'user@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'WORKFLOW_EXECUTED',
     resourceType: 'execution',
     resourceId: executionId,
@@ -593,7 +606,7 @@ app.post('/api/v1/executions/:id/approve', safe(async (req: Request, res: Respon
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'approver@nexus.internal',
+    userEmail: res.locals.user.email,
     action: decision === 'approve' ? 'APPROVAL_GRANTED' : 'APPROVAL_REJECTED',
     resourceType: 'approval',
     resourceId: req.params.id,
@@ -605,10 +618,13 @@ app.post('/api/v1/executions/:id/approve', safe(async (req: Request, res: Respon
 }));
 
 app.post('/api/v1/executions/:id/cancel', (req: Request, res: Response) => {
+  const found = db.getState().executions.find((e) => e.id === req.params.id && e.orgId === res.locals.orgId);
+  if (found && ['completed', 'failed', 'cancelled'].includes(found.status)) {
+    return res.status(409).json({ error: `This execution is already ${found.status}.` });
+  }
   const execution = db.mutate((state) => {
     const exec = state.executions.find((e) => e.id === req.params.id && e.orgId === res.locals.orgId);
     if (!exec) return null;
-    if (exec.status === 'completed' || exec.status === 'failed') return exec;
 
     exec.status = 'cancelled';
     exec.completedAt = new Date().toISOString();
@@ -629,7 +645,7 @@ app.post('/api/v1/executions/:id/cancel', (req: Request, res: Response) => {
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'operator@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'EXECUTION_CANCELLED',
     resourceType: 'execution',
     resourceId: req.params.id,
@@ -680,7 +696,7 @@ app.post('/api/v1/knowledge', (req: Request, res: Response) => {
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'user@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'KNOWLEDGE_INGESTED',
     resourceType: 'knowledge',
     resourceId: doc.id,
@@ -730,7 +746,7 @@ app.delete('/api/v1/knowledge/:id', (req: Request, res: Response) => {
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'user@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'KNOWLEDGE_DELETED',
     resourceType: 'knowledge',
     resourceId: req.params.id,
@@ -755,7 +771,7 @@ app.post('/api/v1/knowledge/:id/reindex', (req: Request, res: Response) => {
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'user@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'VECTOR_INDEX_OPTIMIZED',
     resourceType: 'knowledge',
     resourceId: req.params.id,
@@ -781,7 +797,7 @@ app.post('/api/v1/integrations/:id/test', demoOnly, (req: Request, res: Response
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'user@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'INTEGRATION_TESTED',
     resourceType: 'integration',
     resourceId: integration.id,
@@ -825,7 +841,7 @@ app.post('/api/v1/integrations', (req: Request, res: Response) => {
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'builder@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'INTEGRATION_CREATED',
     resourceType: 'integration',
     resourceId: newIntegration.id,
@@ -850,7 +866,7 @@ app.delete('/api/v1/integrations/:id', (req: Request, res: Response) => {
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'builder@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'INTEGRATION_DELETED',
     resourceType: 'integration',
     resourceId: req.params.id,
@@ -904,7 +920,7 @@ app.post('/api/v1/evaluations/datasets', (req: Request, res: Response) => {
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'evaluator@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'EVALUATION_DATASET_CREATED',
     resourceType: 'agent',
     resourceId: newDataset.id,
@@ -966,7 +982,7 @@ app.post('/api/v1/evaluations/runs', demoOnly, safe(async (req: Request, res: Re
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'evaluator@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'EVALUATION_COMPLETED',
     resourceType: 'agent',
     resourceId: runRecord.id,
@@ -1084,7 +1100,7 @@ app.post('/api/v1/deployments', (req: Request, res: Response) => {
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'operator@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'DEPLOYMENT_PUBLISHED',
     resourceType: 'deployment',
     resourceId: newDeployment.id,
@@ -1110,7 +1126,7 @@ app.patch('/api/v1/deployments/:id/status', (req: Request, res: Response) => {
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'operator@nexus.internal',
+    userEmail: res.locals.user.email,
     action: `DEPLOYMENT_${(status as string).toUpperCase()}`,
     resourceType: 'deployment',
     resourceId: req.params.id,
@@ -1135,7 +1151,7 @@ app.delete('/api/v1/deployments/:id', (req: Request, res: Response) => {
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'operator@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'DEPLOYMENT_DELETED',
     resourceType: 'deployment',
     resourceId: req.params.id,
@@ -1284,20 +1300,15 @@ app.get('/api/v1/audit-events/export', (req: Request, res: Response) => {
 
   if (format === 'csv') {
     const headers = ['id', 'timestamp', 'action', 'resourceType', 'resourceId', 'userId', 'userEmail', 'ipAddress', 'details'];
+    // Every cell is quoted with its quotes doubled, so no value adds a cell or a row; a value a spreadsheet would run
+    // as a formula is kept behind a leading quote mark.
+    const cell = (v: unknown) => {
+      const text = String(v ?? '');
+      return `"${(/^[=+\-@\t\r]/.test(text) ? `'${text}` : text).replace(/"/g, '""')}"`;
+    };
     const csvRows = [headers.join(',')];
     for (const log of logs) {
-      const row = [
-        log.id,
-        `"${log.timestamp}"`,
-        `"${log.action}"`,
-        `"${log.resourceType}"`,
-        `"${log.resourceId}"`,
-        `"${log.userId}"`,
-        `"${log.userEmail}"`,
-        `"${log.ipAddress}"`,
-        `"${(log.details || '').replace(/"/g, '""')}"`,
-      ];
-      csvRows.push(row.join(','));
+      csvRows.push([log.id, log.timestamp, log.action, log.resourceType, log.resourceId, log.userId, log.userEmail, log.ipAddress, log.details].map(cell).join(','));
     }
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="nexus_audit_events.csv"');
@@ -1330,7 +1341,7 @@ app.patch('/api/v1/settings', (req: Request, res: Response) => {
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'admin@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'SECURITY_POLICY_UPDATED',
     resourceType: 'security',
     resourceId: 'platform_settings',
@@ -1449,7 +1460,7 @@ app.post('/api/v1/fine-tuning', demoOnly, (req: Request, res: Response) => {
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'engineer@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'MODEL_FINETUNING_COMPLETED',
     resourceType: 'agent',
     resourceId: newJob.id,
@@ -1494,7 +1505,7 @@ app.post('/api/v1/fine-tuning/:id/deploy', demoOnly, (req: Request, res: Respons
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'platform-lead@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'DEPLOYMENT_PUBLISHED',
     resourceType: 'deployment',
     resourceId: deployment.id,
@@ -1566,7 +1577,7 @@ app.post('/api/v1/data-foundry/generate', demoOnly, (req: Request, res: Response
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'data-scientist@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'SYNTHETIC_DATA_GENERATED',
     resourceType: 'knowledge',
     resourceId: dataset.id,
@@ -1660,7 +1671,7 @@ app.post('/api/v1/red-teaming/execute', demoOnly, (req: Request, res: Response) 
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'redteam@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'ADVERSARIAL_REDTEAM_EXECUTED',
     resourceType: 'security',
     resourceId: newRun.id,
@@ -1725,7 +1736,7 @@ app.patch('/api/v1/red-teaming/guardrails', demoOnly, (req: Request, res: Respon
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'secops@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'GUARDRAILS_POLICY_UPDATED',
     resourceType: 'security',
     resourceId: 'scale_seal_guardrails',
@@ -2215,7 +2226,7 @@ app.post('/api/v1/knowledge/reindex-all', (req: Request, res: Response) => {
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'user@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'VECTOR_INDEX_FULL_REBUILD',
     resourceType: 'knowledge',
     resourceId: 'corpus_all',
@@ -2252,7 +2263,7 @@ app.post('/api/v1/governance/compliance-scan', demoOnly, (req: Request, res: Res
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'security@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'SECURITY_AUDIT_EXECUTED',
     resourceType: 'security',
     resourceId: scanResults.scanId,
@@ -2284,7 +2295,7 @@ app.post('/api/v1/agents/:id/duplicate', (req: Request, res: Response) => {
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'user@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'AGENT_DUPLICATED',
     resourceType: 'agent',
     resourceId: cloned.id,
@@ -2316,7 +2327,7 @@ app.post('/api/v1/workflows/:id/duplicate', (req: Request, res: Response) => {
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'user@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'WORKFLOW_DUPLICATED',
     resourceType: 'workflow',
     resourceId: cloned.id,
@@ -2337,7 +2348,7 @@ app.post('/api/v1/integrations/:id/sync', demoOnly, (req: Request, res: Response
     orgId: res.locals.orgId,
     workspaceId: res.locals.workspaceId,
     userId: res.locals.userId,
-    userEmail: 'user@nexus.internal',
+    userEmail: res.locals.user.email,
     action: 'INTEGRATION_SYNCED',
     resourceType: 'integration',
     resourceId: integration.id,
