@@ -166,7 +166,7 @@ test('two interleaved mutating requests lose no update', async () => {
   const answers = await Promise.all([
     ...Array.from({ length: 20 }, (_, i) => asSeedAdmin('POST', '/api/v1/agents', { name: `concurrent ${i}` })),
     ...Array.from({ length: 10 }, (_, i) => asSeedAdmin('POST', '/api/v1/knowledge', { title: `doc ${i}`, content: `text ${i}` })),
-    ...Array.from({ length: 3 }, () => asSeedAdmin('POST', `/api/v1/workflows/${workflow.id}/execute`, { amount: 10 })),
+    ...Array.from({ length: 3 }, () => asSeedAdmin('POST', `/api/v1/workflows/${workflow.id}/execute`, { input: { amount: 10 } })),
   ]).finally(() => clock.mock.restore());
   for (const a of answers) assert.ok(a.status < 300, `${a.status} ${JSON.stringify(a.body).slice(0, 100)}`);
   const agents = answers.slice(0, 20).map((a) => a.body.agent.id);

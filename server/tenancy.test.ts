@@ -407,8 +407,8 @@ test("org-wide actions of org B touch and report only org B's records", async ()
 test('a deployment key works only for its own deployment, and a deployment response carries no knowledge document text', async () => {
   const bWorkflow = await made(B('POST', '/api/v1/workflows', { name: 'B flow' }), 'workflow');
   const bDeployment = await made(B('POST', '/api/v1/deployments', { workflowId: bWorkflow.id }), 'deployment');
-  const run = (id: string, key: string) => fetch(`${base}/api/v1/deployments/${id}/execute`, {
-    method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` }, body: '{}',
+  const run = (id: string, key: string, body = '{}') => fetch(`${base}/api/v1/deployments/${id}/execute`, {
+    method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` }, body,
   });
   assert.equal((await run(a.deployment, bDeployment.apiKey)).status, 401, "org B's key on org A's deployment");
 
@@ -417,7 +417,8 @@ test('a deployment key works only for its own deployment, and a deployment respo
   const dep = db.getState().deployments.find((d) => d.id === 'dep_prod_fin_reconciliation')!;
   const seedKey = `nx_live_${'ab'.repeat(32)}`;
   db.mutate(() => { dep.apiKeyHash = hashApiKey(seedKey); });
-  const res = await run(dep.id, seedKey);
+  // Since L1 T11 the invoice workflow refuses input without a non-negative amount.
+  const res = await run(dep.id, seedKey, '{"amount": 100}');
   assert.equal(res.status, 200);
   const text = await res.text();
   const exec = db.getState().executions.find((e) => e.id === JSON.parse(text).executionId)!;
@@ -641,4 +642,159 @@ test('test-invoke without a session gets 401', async () => {
   const dep = await publish();
   const r = await fetch(`${base}/api/v1/deployments/${dep.id}/test-invoke`, { method: 'POST', headers: { authorization: `Bearer ${dep.apiKey}` } });
   assert.equal(r.status, 401);
+});
+
+// L1 T11: bodies are checked against one schema table, errors carry no internals, and the limits hold.
+const { SCHEMAS } = await import('./schemas');
+const { mergeAgentOutput } = await import('./engine');
+const internals = /\bat [\w.<>]+ \(|node_modules|\.tsx?:\d+|[A-Za-z]:\\|\/Users\/|TypeError|SyntaxError|ReferenceError|stack/;
+const clean = (r: { status: number; body: any }, what: string) => {
+  assert.deepEqual(Object.keys(r.body ?? {}), ['error'], `${what}: only an error message`);
+  assert.doesNotMatch(r.body.error, internals, `${what}: no internals`);
+};
+const stillAnswering = async () => assert.equal((await B('GET', '/api/v1/me')).status, 200, 'the server keeps answering');
+const WRONG: Record<string, unknown> = {
+  string: 12345, numeric: 'twelve', number: '12', nonnegative: -1, boolean: 'yes', object: 'x', array: 'x',
+  'string[]': [1], nodes: [{ id: 'n' }], edges: [{ source: 1 }], cases: [{ input: {} }], schema: { amount: 'money' },
+};
+// A right value of each type, for the required fields around the one under test.
+const RIGHT: Record<string, unknown> = { string: 'x', numeric: 1, number: 1, nonnegative: 1, boolean: true, object: {}, array: [], 'string[]': [], nodes: [], edges: [], cases: [], schema: {}, any: 'x' };
+const rightFor = (type: string) => (type.includes('|') ? type.split('|')[0] : RIGHT[type]);
+
+test('an invalid body gets 400 without internals', async () => {
+  const src = fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf-8').replace(/\r/g, '');
+  const reading = [...src.matchAll(/^app\.(get|post|put|patch|delete)\('([^']+)'[\s\S]*?^\}\)\)?;$/gm)]
+    .filter((m) => m[0].includes('req.body')).map((m) => `${m[1].toUpperCase()} ${m[2]}`);
+  assert.ok(reading.length > 20);
+  assert.deepEqual(reading.filter((r) => !(r in SCHEMAS)), [], 'routes that read their body without a schema');
+  for (const [route, schema] of Object.entries(SCHEMAS)) {
+    const [method, path] = route.split(' ');
+    const url = path.replace(/:\w+/g, 'x');
+    const notObject = await B(method, url, [1, 2]);
+    assert.equal(notObject.status, 400, `${route}: a body that is not an object`);
+    clean(notObject, route);
+    for (const [field, spec] of Object.entries(schema)) {
+      const type = spec.replace(/\?$/, '');
+      if (type === 'any') continue;
+      const others = Object.fromEntries(Object.entries(schema).filter(([k, t]) => k !== field && !t.endsWith('?')).map(([k, t]) => [k, rightFor(t)]));
+      const r = await B(method, url, { ...others, [field]: type.includes('|') ? 'bogus' : WRONG[type] });
+      assert.equal(r.status, 400, `${route}: ${field} as the wrong type`);
+      clean(r, `${route} ${field}`);
+      assert.match(r.body.error, new RegExp(field), `${route}: the answer names ${field}`);
+    }
+  }
+  const broken = await fetch(base + '/api/v1/agents', { method: 'POST', headers: { 'content-type': 'application/json', cookie: cookies.get(users.b_org_admin.id)! }, body: '{"name": ' });
+  const answer = { status: broken.status, body: await broken.json().catch(() => null) };
+  assert.equal(answer.status, 400, 'JSON that does not parse');
+  clean(answer, 'JSON that does not parse');
+  await stillAnswering();
+});
+
+test('a request body over the limit gets 413', async () => {
+  const before = db.getState().knowledge.length;
+  const r = await B('POST', '/api/v1/knowledge', { title: 'big', content: 'x'.repeat(1024 * 1024 + 1) });
+  assert.equal(r.status, 413);
+  clean(r, 'an oversized body');
+  assert.equal(db.getState().knowledge.length, before, 'nothing was stored');
+  await stillAnswering();
+});
+
+test('an invalid deployment status gets 400 and changes nothing', async () => {
+  const wf = await made(B('POST', '/api/v1/workflows', { name: 'status' }), 'workflow');
+  const dep = await made(B('POST', '/api/v1/deployments', { workflowId: wf.id }), 'deployment');
+  const before = JSON.stringify(db.getState().deployments.find((d) => d.id === dep.id));
+  for (const body of [{ status: 'deleted' }, {}, { status: 7 }]) {
+    const r = await B('PATCH', `/api/v1/deployments/${dep.id}/status`, body);
+    assert.equal(r.status, 400, JSON.stringify(body));
+    clean(r, JSON.stringify(body));
+  }
+  assert.equal(JSON.stringify(db.getState().deployments.find((d) => d.id === dep.id)), before);
+});
+
+test('a malformed dataset or graph fails its request with 4xx and the server keeps answering', async () => {
+  // Refused when written.
+  assert.equal((await B('POST', '/api/v1/evaluations/datasets', { name: 'bad', cases: [{ input: {} }] })).status, 400);
+  const node = { id: 's', type: 'start', label: 'Start', position: { x: 0, y: 0 } };
+  assert.equal((await B('POST', '/api/v1/workflows', { name: 'bad', nodes: [node], edges: [] })).status, 400);
+  // Refused when read back, for records stored before these checks existed.
+  const datasetId = 'ds_legacy_bad';
+  db.mutate((s) => { s.evaluations.datasets.push({ id: datasetId, orgId: 'org_b', workspaceId: 'ws_b', name: 'legacy', description: '', cases: [{ id: 'c', input: {} }], createdAt: new Date().toISOString() } as any); });
+  const run = await B('POST', '/api/v1/evaluations/runs', { datasetId });
+  assert.ok(run.status >= 400 && run.status < 500, `evaluation run on a malformed dataset: ${run.status}`);
+  clean(run, 'evaluation run');
+  await stillAnswering();
+  const wf = await made(B('POST', '/api/v1/workflows', { name: 'legacy graph' }), 'workflow');
+  db.mutate((s) => {
+    const stored = s.workflows.find((w) => w.id === wf.id)!;
+    for (const v of stored.versions) for (const n of v.nodes) delete (n as any).config;
+  });
+  const exec = await B('POST', `/api/v1/workflows/${wf.id}/execute`, {});
+  assert.ok(exec.status >= 400 && exec.status < 500, `run of a malformed stored graph: ${exec.status}`);
+  clean(exec, 'run of a malformed stored graph');
+  await stillAnswering();
+});
+
+test('an invoice without a numeric, non-negative amount is refused before it runs', async () => {
+  // A workflow that declares its input refuses anything else before a run exists.
+  const wf = await made(B('POST', '/api/v1/workflows', { name: 'invoice', inputSchema: { amount: 'nonnegative' } }), 'workflow');
+  const runs = () => db.getState().executions.filter((e) => e.workflowId === wf.id).length;
+  for (const input of [{ amount: '$90,000' }, {}, { amount: -90000 }]) {
+    const r = await B('POST', `/api/v1/workflows/${wf.id}/execute`, { input });
+    assert.equal(r.status, 400, JSON.stringify(input));
+    clean(r, JSON.stringify(input));
+  }
+  assert.equal(runs(), 0, 'no run was created');
+  assert.equal((await B('POST', `/api/v1/workflows/${wf.id}/execute`, { input: { amount: 100 } })).status, 200);
+  // The seed invoice workflow declares it too, and its deployment refuses the same way.
+  const seed = db.getState().workflows.find((w) => w.id === 'wf_invoice_reconciliation')!;
+  assert.deepEqual(seed.inputSchema, { amount: 'nonnegative' });
+  const dep = db.getState().deployments.find((d) => d.id === 'dep_prod_fin_reconciliation')!;
+  const key = `nx_live_${'ef'.repeat(32)}`;
+  db.mutate(() => { dep.apiKeyHash = hashApiKey(key); dep.status = 'active'; });
+  for (const body of ['{"amount":"$90,000"}', '{}', '{"amount":-90000}']) {
+    const r = await fetch(`${base}/api/v1/deployments/${dep.id}/execute`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` }, body });
+    assert.equal(r.status, 400, body);
+  }
+  // A condition that compares a missing or non-numeric value fails the run instead of taking a branch.
+  const open = await made(B('POST', '/api/v1/workflows', {
+    name: 'no schema',
+    nodes: [
+      { id: 's', type: 'start', label: 'Start', position: { x: 0, y: 0 }, config: {} },
+      { id: 'c', type: 'condition', label: 'Amount > 25000?', position: { x: 0, y: 0 }, config: { field: 'input.amount', operator: '>', value: 25000 } },
+      { id: 'e', type: 'end', label: 'End', position: { x: 0, y: 0 }, config: {} },
+    ],
+    edges: [{ id: 'e1', source: 's', target: 'c' }, { id: 'e2', source: 'c', target: 'e', label: 'False' }],
+  }), 'workflow');
+  const run = (await B('POST', `/api/v1/workflows/${open.id}/execute`, { input: { amount: '$90,000' } })).body.execution;
+  assert.equal(run.status, 'failed');
+});
+
+test('agent output cannot overwrite the workflow input', () => {
+  const input = { amount: 90000 };
+  const vars = mergeAgentOutput({ ...input, input }, input, { input: { amount: 1 }, amount: 1, verdict: 'clear' });
+  assert.deepEqual([vars.input.amount, vars.amount, vars.verdict], [90000, 90000, 'clear']);
+  assert.deepEqual(mergeAgentOutput({ input }, input, 'plain text').agentDecision, 'plain text');
+  assert.match(fs.readFileSync(new URL('./engine.ts', import.meta.url), 'utf-8'), /currentVariables = mergeAgentOutput\(/, 'the engine merges through it');
+});
+
+test('one call over the rate limit gets 429', async () => {
+  const wf = await made(B('POST', '/api/v1/workflows', { name: 'limited' }), 'workflow');
+  const dep = await made(B('POST', '/api/v1/deployments', { workflowId: wf.id, rateLimitPerMinute: 2 }), 'deployment');
+  const call = () => fetch(`${base}/api/v1/deployments/${dep.id}/execute`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${dep.apiKey}` }, body: '{}' });
+  assert.deepEqual([(await call()).status, (await call()).status], [200, 200]);
+  const runsBefore = db.getState().executions.length;
+  const over = await call();
+  assert.equal(over.status, 429);
+  assert.ok(Number(over.headers.get('retry-after')) > 0, 'Retry-After says when to come back');
+  assert.equal(db.getState().executions.length, runsBefore, 'the refused call ran nothing');
+});
+
+test('repeated failed sign-ins for one account get 429', async () => {
+  const target = { ...users.b_viewer, id: 'usr_b_target', email: 'target@org-b.test' };
+  db.mutate((s) => { s.users.push({ ...target, passwordHash: hashPassword('right-password') }); });
+  for (let i = 0; i < 5; i++) assert.equal((await login(target.email, `guess-${i}`)).status, 401, `guess ${i}`);
+  const locked = await login(target.email, 'right-password');
+  assert.equal(locked.status, 429, 'even the right password waits');
+  assert.ok(Number(locked.headers.get('retry-after')) > 0);
+  assert.equal((await login(users.b_evaluator.email, password(users.b_evaluator))).status, 200, 'other accounts are not affected');
 });

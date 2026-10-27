@@ -1,4 +1,5 @@
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+import { valid } from './schemas';
 import { db, settingsOf, newId, Workflow, WorkflowNode, WorkflowEdge, ExecutionRecord, NodeExecutionRecord } from './storage';
 
 // Initialize Gemini client on server with required User-Agent
@@ -200,7 +201,7 @@ ${params.context ? `Relevant Knowledge Context & Citations:\n${params.context}` 
 
   // Deterministic enterprise simulation harness: demo mode only, and every answer says simulated.
   if (!settingsOf(state, params.orgId).demoMode) {
-    throw new Error('No model provider answered, and simulated agent answers run only in demo mode.');
+    throw Object.assign(new Error('No model provider answered, and simulated agent answers run only in demo mode.'), { status: 503, expose: true });
   }
   const isInvoice = agent.id.includes('invoice') || JSON.stringify(params.userInput).includes('amount');
   const amount = params.userInput?.amount || 18450;
@@ -256,6 +257,15 @@ function simulatedStep<T extends object>(orgId: string, what: string, output: T)
   if (!settingsOf(db.getState(), orgId).demoMode) throw new Error(`${what} is simulated and runs only in demo mode.`);
   return { ...output, simulated: true };
 }
+
+// Agent output may add variables but never replace the run's input, which conditions and approvals read (S33).
+export const mergeAgentOutput = (variables: Record<string, any>, input: Record<string, any>, output: unknown): Record<string, any> => ({
+  ...variables,
+  ...(typeof output === 'object' && output !== null ? output : {}),
+  ...input,
+  input,
+  agentDecision: output,
+});
 
 export async function runWorkflowExecution(executionId: string): Promise<ExecutionRecord> {
   const state = db.getState();
@@ -347,7 +357,7 @@ export async function runWorkflowExecution(executionId: string): Promise<Executi
         totalTokens += agentResult.tokensUsed;
         totalCost += agentResult.costUsd;
 
-        currentVariables = { ...currentVariables, ...agentResult.output, agentDecision: agentResult.output };
+        currentVariables = mergeAgentOutput(currentVariables, execution.input, agentResult.output);
         record.status = 'success';
       } else if (node.type === 'condition') {
         let conditionPassed = false;
@@ -366,6 +376,10 @@ export async function runWorkflowExecution(executionId: string): Promise<Executi
           actualVal = currentVariables.amount || currentVariables.riskScore || 0;
         }
 
+        // A number compared with something that is not one fails the run instead of choosing a branch (S30).
+        if (['>', '>=', '<', '<='].includes(operator) && !valid('numeric', actualVal)) {
+          throw new Error(`Condition "${node.label}" compares ${field || 'its value'}, which is not a number.`);
+        }
         if (operator === '>') conditionPassed = Number(actualVal) > Number(targetVal);
         else if (operator === '>=') conditionPassed = Number(actualVal) >= Number(targetVal);
         else if (operator === '<') conditionPassed = Number(actualVal) < Number(targetVal);

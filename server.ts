@@ -5,6 +5,8 @@ import { fileURLToPath } from 'url';
 import { db, simulatedScope, settingsOf, guardrailsOf, orgView, newId, type User } from './server/storage';
 import { validateGraph, runWorkflowExecution, executeAgentDirectly } from './server/engine';
 import { allowed } from './server/permissions';
+import { bodyProblem, problem, valid } from './server/schemas';
+import { rateLimited, signInFailed, signInLocked, signInSucceeded } from './server/limits';
 import { apiKeyMatches, hashApiKey, newApiKey, publicDeployment } from './server/auth';
 import { bootstrapAdmin, createSession, endSession, publicUser, readSession, sessionCookie, verifyPassword } from './server/auth';
 
@@ -16,7 +18,8 @@ const __dirname = path.dirname(__filename);
 export const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
-app.use(express.json({ limit: '10mb' }));
+// The largest body a screen sends is a knowledge document's text; 1 MB holds about 500 pages of it.
+app.use(express.json({ limit: '1mb' }));
 
 // Identity comes from the session cookie on every request, into res.locals; identity headers are ignored.
 // Open without a session: signing in, and deployment calls, which authenticate with their API key.
@@ -36,6 +39,33 @@ app.use('/api', (req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
+// Every body a route reads is checked against its entry in server/schemas.ts.
+app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+  const wrong = bodyProblem(req.method, req.baseUrl + req.path, req.body);
+  if (wrong) return res.status(400).json({ error: wrong });
+  next();
+});
+
+// Express 4 does not catch a rejected promise, so an async handler that throws would leave its request hanging
+// and raise an unhandled rejection; this passes the error to the error handler at the end of this file.
+const safe = (handler: (req: Request, res: Response) => Promise<unknown>) => (req: Request, res: Response, next: NextFunction) => {
+  handler(req, res).catch(next);
+};
+
+// What stops a run before it starts: input that breaks the workflow's own input schema, or a graph stored before
+// graphs were checked.
+function runRefusal(workflowId: string, input: unknown): [number, string] | undefined {
+  const workflow = db.getState().workflows.find((w) => w.id === workflowId);
+  const version = workflow?.versions.find((v) => v.version === workflow.activeVersion) || workflow?.versions[0];
+  if (!workflow || !version) return undefined;
+  const wrong = workflow.inputSchema && problem(workflow.inputSchema, input);
+  if (wrong) return [400, `The input does not fit this workflow: ${wrong}`];
+  if (!valid('nodes', version.nodes) || !valid('edges', version.edges)) {
+    return [422, 'This workflow\'s stored graph is malformed; open it in the builder and save it again.'];
+  }
+  return undefined;
+}
+
 // Simulated features answer only in demo mode, their responses say simulated: true,
 // and every audit record they write is flagged simulated.
 const demoOnly = (req: Request, res: Response, next: NextFunction) => {
@@ -45,11 +75,18 @@ const demoOnly = (req: Request, res: Response, next: NextFunction) => {
 
 // ==================== AUTH & CONTEXT ====================
 app.post('/api/v1/auth/login', (req: Request, res: Response) => {
-  const { email, password } = req.body ?? {};
-  const user = typeof email === 'string' ? db.getState().users.find((u) => u.email.toLowerCase() === email.toLowerCase()) : undefined;
-  if (!verifyPassword(String(password ?? ''), user?.passwordHash) || !user) {
+  const { email, password } = req.body;
+  const wait = signInLocked(email);
+  if (wait) {
+    res.setHeader('Retry-After', String(wait));
+    return res.status(429).json({ error: 'Too many failed sign-ins for this account. Try again later.' });
+  }
+  const user = db.getState().users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+  if (!verifyPassword(password, user?.passwordHash) || !user) {
+    signInFailed(email);
     return res.status(401).json({ error: 'Wrong email or password.' });
   }
+  signInSucceeded(email);
   res.setHeader('Set-Cookie', sessionCookie(createSession(user)));
   db.logAudit({
     orgId: user.orgId,
@@ -220,23 +257,19 @@ app.put('/api/v1/agents/:id', (req: Request, res: Response) => {
   res.json({ agent: updated });
 });
 
-app.post('/api/v1/agents/:id/test', async (req: Request, res: Response) => {
+app.post('/api/v1/agents/:id/test', safe(async (req: Request, res: Response) => {
   const { userInput, useHighThinking } = req.body;
   if (!db.getState().agents.some((a) => a.id === req.params.id && a.orgId === res.locals.orgId)) {
     return res.status(404).json({ error: 'Agent not found' });
   }
-  try {
-    const result = await executeAgentDirectly({
-      orgId: res.locals.orgId,
-      agentId: req.params.id,
-      userInput: userInput || 'Perform test verification',
-      useHighThinking: useHighThinking ?? true,
-    });
-    res.json(result);
-  } catch (err: any) {
-    res.status(500).json({ error: err?.message || 'Agent test failed' });
-  }
-});
+  const result = await executeAgentDirectly({
+    orgId: res.locals.orgId,
+    agentId: req.params.id,
+    userInput: userInput || 'Perform test verification',
+    useHighThinking: useHighThinking ?? true,
+  });
+  res.json(result);
+}));
 
 // ==================== WORKFLOWS ====================
 app.get('/api/v1/workflows', (req: Request, res: Response) => {
@@ -255,7 +288,7 @@ app.get('/api/v1/workflows/:id', (req: Request, res: Response) => {
 });
 
 app.post('/api/v1/workflows', (req: Request, res: Response) => {
-  const { name, description, department, category, nodes, edges } = req.body;
+  const { name, description, department, category, nodes, edges, inputSchema } = req.body;
   const workflow = db.mutate((state) => {
     const id = newId('wf');
     const wf = {
@@ -263,6 +296,7 @@ app.post('/api/v1/workflows', (req: Request, res: Response) => {
       orgId: res.locals.orgId,
       workspaceId: res.locals.workspaceId,
       name: name || 'New Orchestration Flow',
+      ...(inputSchema ? { inputSchema } : {}),
       description: description || 'Visual multi-agent pipeline',
       department: department || 'Operations',
       category: category || 'Custom',
@@ -303,7 +337,7 @@ app.post('/api/v1/workflows', (req: Request, res: Response) => {
 });
 
 app.put('/api/v1/workflows/:id', (req: Request, res: Response) => {
-  const { name, description, department, nodes, edges } = req.body;
+  const { name, description, department, nodes, edges, inputSchema } = req.body;
   const updated = db.mutate((state) => {
     const idx = state.workflows.findIndex((w) => w.id === req.params.id && w.orgId === res.locals.orgId);
     if (idx === -1) return null;
@@ -312,6 +346,7 @@ app.put('/api/v1/workflows/:id', (req: Request, res: Response) => {
     if (name) wf.name = name;
     if (description) wf.description = description;
     if (department) wf.department = department;
+    if (inputSchema) wf.inputSchema = inputSchema;
     wf.updatedAt = new Date().toISOString();
 
     if (nodes && edges) {
@@ -334,13 +369,15 @@ app.post('/api/v1/workflows/:id/validate', (req: Request, res: Response) => {
   res.json(result);
 });
 
-app.post('/api/v1/workflows/:id/execute', async (req: Request, res: Response) => {
+app.post('/api/v1/workflows/:id/execute', safe(async (req: Request, res: Response) => {
   const { input, trigger } = req.body;
   const state = db.getState();
   const workflow = state.workflows.find((w) => w.id === req.params.id && w.orgId === res.locals.orgId);
   if (!workflow) {
     return res.status(404).json({ error: 'Workflow not found' });
   }
+  const refused = runRefusal(workflow.id, input || { test: true });
+  if (refused) return res.status(refused[0]).json({ error: refused[1] });
 
   const executionId = newId('exec');
   const executionRecord = {
@@ -373,13 +410,9 @@ app.post('/api/v1/workflows/:id/execute', async (req: Request, res: Response) =>
     ipAddress: req.ip || '127.0.0.1',
   });
 
-  try {
-    const executed = await runWorkflowExecution(executionId);
-    res.json({ execution: executed });
-  } catch (err: any) {
-    res.status(500).json({ error: err?.message || 'Workflow execution error' });
-  }
-});
+  const executed = await runWorkflowExecution(executionId);
+  res.json({ execution: executed });
+}));
 
 // ==================== ANALYTICS & TRENDS ====================
 app.get('/api/v1/analytics/trends', (req: Request, res: Response) => {
@@ -519,7 +552,7 @@ app.get('/api/v1/executions/:id', (req: Request, res: Response) => {
   res.json({ execution });
 });
 
-app.post('/api/v1/executions/:id/approve', async (req: Request, res: Response) => {
+app.post('/api/v1/executions/:id/approve', safe(async (req: Request, res: Response) => {
   const { decision, notes } = req.body;
   const state = db.getState();
   const exec = state.executions.find((e) => e.id === req.params.id && e.orgId === res.locals.orgId);
@@ -569,7 +602,7 @@ app.post('/api/v1/executions/:id/approve', async (req: Request, res: Response) =
   });
 
   res.json({ execution });
-});
+}));
 
 app.post('/api/v1/executions/:id/cancel', (req: Request, res: Response) => {
   const execution = db.mutate((state) => {
@@ -882,12 +915,15 @@ app.post('/api/v1/evaluations/datasets', (req: Request, res: Response) => {
   res.status(201).json({ dataset: newDataset });
 });
 
-app.post('/api/v1/evaluations/runs', demoOnly, async (req: Request, res: Response) => {
+app.post('/api/v1/evaluations/runs', demoOnly, safe(async (req: Request, res: Response) => {
   const { datasetId, targetType, targetId } = req.body;
   const state = db.getState();
   const datasets = state.evaluations.datasets.filter((d) => d.orgId === res.locals.orgId);
   const dataset = datasets.find((d) => d.id === datasetId) || datasets[0];
   if (!dataset) return res.status(404).json({ error: 'Dataset not found' });
+  if (!valid('cases', dataset.cases)) {
+    return res.status(422).json({ error: 'This dataset has a case without an expected output or keywords; fix the dataset first.' });
+  }
 
   const results = dataset.cases.map((c, i) => ({
     caseId: c.id,
@@ -939,7 +975,7 @@ app.post('/api/v1/evaluations/runs', demoOnly, async (req: Request, res: Respons
   });
 
   res.json({ run: runRecord, simulated: true });
-});
+}));
 
 // ==================== DEPLOYMENTS ====================
 app.get('/api/v1/deployments', (req: Request, res: Response) => {
@@ -950,7 +986,7 @@ app.get('/api/v1/deployments', (req: Request, res: Response) => {
 });
 
 // Authenticated deployment execution endpoint
-app.post('/api/v1/deployments/:id/execute', async (req: Request, res: Response) => {
+app.post('/api/v1/deployments/:id/execute', safe(async (req: Request, res: Response) => {
   const authHeader = req.headers.authorization;
   const state = db.getState();
   const deployment = state.deployments.find((d) => d.id === req.params.id);
@@ -970,6 +1006,13 @@ app.post('/api/v1/deployments/:id/execute', async (req: Request, res: Response) 
   if (deployment.status !== 'active') {
     return res.status(403).json({ error: `This deployment is ${deployment.status}.` });
   }
+  const wait = rateLimited(`deployment ${deployment.id}`, deployment.rateLimitPerMinute);
+  if (wait) {
+    res.setHeader('Retry-After', String(wait));
+    return res.status(429).json({ error: `This deployment takes ${deployment.rateLimitPerMinute} calls a minute.` });
+  }
+  const refused = runRefusal(deployment.workflowId, req.body);
+  if (refused) return res.status(refused[0]).json({ error: refused[1] });
 
   deployment.invocationsTotal += 1;
   deployment.lastInvokedAt = new Date().toISOString();
@@ -1001,7 +1044,7 @@ app.post('/api/v1/deployments/:id/execute', async (req: Request, res: Response) 
     durationMs: executed.durationMs,
     ...(executed.simulated ? { simulated: true } : {}),
   });
-});
+}));
 
 app.post('/api/v1/deployments', (req: Request, res: Response) => {
   const { workflowId, name, environment, rateLimitPerMinute } = req.body;
@@ -1274,10 +1317,6 @@ app.get('/api/v1/settings', (req: Request, res: Response) => {
 
 app.patch('/api/v1/settings', (req: Request, res: Response) => {
   const { allowedModels, requireHumanApprovalForDeploy, dataRetentionDays, demoMode } = req.body;
-  // Demo mode is the line between simulated and real features, so a truthy string must not flip it.
-  if (demoMode !== undefined && typeof demoMode !== 'boolean') {
-    return res.status(400).json({ error: 'demoMode must be true or false.' });
-  }
   const updated = db.mutate((state) => {
     const settings = settingsOf(state, res.locals.orgId);
     if (allowedModels !== undefined) settings.allowedModels = allowedModels;
@@ -1979,27 +2018,23 @@ app.get('/api/v1/roadmap', demoOnly, (req: Request, res: Response) => {
 });
 
 // Direct Gemini 4 Argon High-Thinking query endpoint (for instant testing from UI)
-app.post('/api/v1/ai/think-and-generate', async (req: Request, res: Response) => {
+app.post('/api/v1/ai/think-and-generate', safe(async (req: Request, res: Response) => {
   const { prompt, systemInstruction } = req.body;
   if (!db.getState().agents.some((a) => a.id === 'agent_invoice_auditor' && a.orgId === res.locals.orgId)) {
     return res.status(404).json({ error: 'Agent not found' });
   }
-  try {
-    const result = await executeAgentDirectly({
-      orgId: res.locals.orgId,
-      agentId: 'agent_invoice_auditor',
-      userInput: prompt,
-      context: systemInstruction,
-      useHighThinking: true,
-    });
-    res.json(result);
-  } catch (err: any) {
-    res.status(500).json({ error: err?.message || 'Reasoning failed' });
-  }
-});
+  const result = await executeAgentDirectly({
+    orgId: res.locals.orgId,
+    agentId: 'agent_invoice_auditor',
+    userInput: prompt,
+    context: systemInstruction,
+    useHighThinking: true,
+  });
+  res.json(result);
+}));
 
 // ==================== PLATFORM SELF-TEST & VERIFICATION SUITE ====================
-app.get('/api/v1/system/self-test', demoOnly, async (req: Request, res: Response) => {
+app.get('/api/v1/system/self-test', demoOnly, safe(async (req: Request, res: Response) => {
   const startTime = Date.now();
   const state = orgView(db.getState(), res.locals.orgId);
 
@@ -2115,16 +2150,18 @@ app.get('/api/v1/system/self-test', demoOnly, async (req: Request, res: Response
     suites,
     simulated: true,
   });
-});
+}));
 
 // Test invoke deployment endpoint directly from Console sandbox without requiring token copy
-app.post('/api/v1/deployments/:id/test-invoke', async (req: Request, res: Response) => {
+app.post('/api/v1/deployments/:id/test-invoke', safe(async (req: Request, res: Response) => {
   const state = db.getState();
   const deployment = state.deployments.find((d) => d.id === req.params.id && d.orgId === res.locals.orgId);
   if (!deployment) return res.status(404).json({ error: 'Deployment not found' });
   if (deployment.simulated && !settingsOf(state, res.locals.orgId).demoMode) {
     return res.status(501).json({ error: 'This deployment was made by a simulated feature and runs only in demo mode.' });
   }
+  const refused = runRefusal(deployment.workflowId, req.body);
+  if (refused) return res.status(refused[0]).json({ error: refused[1] });
 
   const executionId = newId('exec_dep_test');
   const executionRecord = {
@@ -2162,7 +2199,7 @@ app.post('/api/v1/deployments/:id/test-invoke', async (req: Request, res: Respon
     invocationsTotal: deployment.invocationsTotal,
     ...(executed.simulated ? { simulated: true } : {}),
   });
-});
+}));
 
 // Re-index all knowledge documents
 app.post('/api/v1/knowledge/reindex-all', (req: Request, res: Response) => {
@@ -2316,6 +2353,15 @@ app.post('/api/v1/integrations/:id/sync', demoOnly, (req: Request, res: Response
     syncedAt: new Date().toISOString(),
     simulated: true,
   });
+});
+
+// Errors reach the client as a short message: a body error says what was wrong; anything else says nothing internal,
+// unless the error was raised to be shown (expose), and the details go to the server log.
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  if (err?.type === 'entity.too.large') return res.status(413).json({ error: 'The body is larger than 1 MB.' });
+  if (err?.type === 'entity.parse.failed') return res.status(400).json({ error: 'The body is not valid JSON.' });
+  if (!err?.expose) console.error(err);
+  res.status(err?.expose && err.status ? err.status : 500).json({ error: err?.expose ? err.message : 'Something went wrong; the server log has the details.' });
 });
 
 // ==================== VITE MIDDLEWARE SETUP ====================

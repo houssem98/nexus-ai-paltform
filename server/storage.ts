@@ -97,6 +97,8 @@ export interface Workflow {
   category: string;
   activeVersion: number;
   versions: WorkflowVersion[];
+  // What a run's input must hold, in the type words of server/schemas.ts; a run that breaks it is refused.
+  inputSchema?: Record<string, string>;
   isTemplate?: boolean;
   createdAt: string;
   updatedAt: string;
@@ -589,6 +591,7 @@ function getInitialSeedData(): PlatformState {
         description: 'End-to-end invoice ingestion, contract verification, compliance checks, conditional CFO approval for amounts >$25k, and ERP ledger commit.',
         department: 'Finance',
         category: 'Financial Automation',
+        inputSchema: { amount: 'nonnegative' },
         activeVersion: 1,
         isTemplate: true,
         createdAt: '2026-02-15T11:00:00Z',
@@ -1486,6 +1489,13 @@ function readJsonStore(file: string): PlatformState {
   return parsed;
 }
 
+// Changes later versions need in records already stored, applied at every boot; a boot that changes nothing writes nothing.
+function upgrade(state: PlatformState) {
+  // L1 T11: the invoice workflow refuses an amount that is not a non-negative number (S30).
+  const invoice = state.workflows.find((w) => w.id === 'wf_invoice_reconciliation');
+  if (invoice && !invoice.inputSchema) invoice.inputSchema = { amount: 'nonnegative' };
+}
+
 export class StorageManager {
   private state: PlatformState;
   private sql: DatabaseSync;
@@ -1512,7 +1522,8 @@ export class StorageManager {
     const fresh = (this.run('SELECT count(*) AS n FROM list_order', 'get') as { n: number }).n === 0;
     const json = path.join(dir, 'nexus-store.json');
     this.state = fresh ? (fs.existsSync(json) ? readJsonStore(json) : getInitialSeedData()) : this.loadState();
-    if (fresh) this.persist();
+    upgrade(this.state);
+    this.persist();
   }
 
   private run(query: string, how: 'run' | 'get' | 'all', ...params: SQLInputValue[]) {

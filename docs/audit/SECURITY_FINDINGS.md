@@ -117,12 +117,14 @@ Test: L1 T7: executing a suspended deployment gets 403
 
 ### S17 · secrets · high · confidence high
 Model spend is unbounded and needs no key. Think-and-generate, the agent test and workflow runs call the provider for any caller, the per-deployment rate limit is stored and never enforced, bodies may be 10 MB, and a cycle repeats agent calls up to the step cap of 25. Widened in L0 T8; it used to say only a key holder could do this.
-Evidence: `server.ts#app.post('/api/v1/ai/think-and-generate'`, `server.ts#rateLimitPerMinute: Number(rateLimitPerMinute) || 120,`, `server.ts#app.use(express.json({ limit: '10mb' }));`
+Partly fixed. Since L1 T3 and T5 these routes need a signed-in builder (an operator for runs). Since L1 T11 each deployment keeps to its calls per minute, answering 429 beyond them, and bodies are capped at 1 MB. Still open: a user's or an org's model spend has no ceiling (quotas are L6 T3), and a cycle repeats agent calls up to the step cap (L2 T8).
+Evidence: `server.ts#app.post('/api/v1/ai/think-and-generate'`, `server/limits.ts#export function rateLimited(key: string, perMinute: number) {`, `server.ts#This deployment takes`, `server.ts#app.use(express.json({ limit: '1mb' }));`, `server/tenancy.test.ts#one call over the rate limit gets 429`
 Test: L1 T11: one call over the rate limit gets 429
 
 ### S18 · secrets · low · confidence medium
 Error responses pass internal error messages to the client.
-Evidence: `server.ts#res.status(500).json({ error: err?.message`
+Fixed in L1 T11: one error handler answers every error the routes do not, with a fixed sentence unless the error was raised to be shown; bodies that do not fit their schema get 400 naming the field; JSON that does not parse gets 400 and an oversized body 413, both without the parser's text.
+Evidence: `server.ts#Something went wrong; the server log has the details.`, `server.ts#const wrong = bodyProblem(req.method, req.baseUrl + req.path, req.body);`, `server/tenancy.test.ts#an invalid body gets 400 without internals`
 Test: L1 T11: an invalid body gets 400 without internals
 
 ### S19 · outbound calls · medium · confidence high
@@ -182,12 +184,14 @@ Test: L1 T7: the dev server does not serve the data store or the server source
 
 ### S29 · availability · high · confidence high
 Express 4 does not catch a rejected promise from an async handler, and nothing handles unhandled rejections, so one request can stop the process for every tenant. A dataset case without keywords, or a stored graph node without a config, makes the evaluation run or a deployment run throw. Reproduced: the request got no response and raised an unhandled rejection.
-Evidence: `server.ts#app.post('/api/v1/evaluations/runs', demoOnly, async (req: Request, res: Response) => {`, `server.ts#cases: cases && cases.length > 0 ? cases : [`
+Fixed in L1 T11: every async route passes its errors to the error handler, so none can hang a request or stop the process; graphs and cases are checked when written, and graphs and datasets stored before that are refused when read, with 422.
+Evidence: `server.ts#handler(req, res).catch(next);`, `server/schemas.ts#nodes: (v) => Array.isArray(v)`, `server.ts#if (!valid('cases', dataset.cases)) {`, `server.ts#cases: cases && cases.length > 0 ? cases : [`, `server/tenancy.test.ts#a malformed dataset or graph fails its request with 4xx and the server keeps answering`
 Test: L1 T11: a malformed dataset or graph fails its request with 4xx and the server keeps answering
 
 ### S30 · workflow integrity · high · confidence high
 The CFO approval threshold fails open. A missing, non-numeric or negative amount compares false, so the run takes the auto-post branch; a condition whose edge labels do not contain True or False falls back to the first edge, which sends every seeded SOC alert to approval whatever its score. Reproduced: amounts `"$90,000"`, missing and -90000 completed with no approval. Branch values instead of labels are L3 T2.
-Evidence: `server/engine.ts#if (operator === '>') conditionPassed = Number(actualVal) > Number(targetVal);`, `server/engine.ts#e.label?.toLowerCase().includes(branchLabel.toLowerCase())`
+Fixed in L1 T11: a workflow may declare the input it takes, and the seed invoice workflow requires a non-negative number as its amount, so every run route refuses other input with 400 before a run exists; and a condition that compares a value that is not a number fails the run instead of choosing a branch. Branch values instead of labels remain L3 T2.
+Evidence: `server/storage.ts#inputSchema: { amount: 'nonnegative' },`, `server.ts#const refused = runRefusal(workflow.id, input || { test: true });`, `server/engine.ts#which is not a number.`, `server/tenancy.test.ts#an invoice without a numeric, non-negative amount is refused before it runs`, `server/engine.ts#if (operator === '>') conditionPassed = Number(actualVal) > Number(targetVal);`, `server/engine.ts#e.label?.toLowerCase().includes(branchLabel.toLowerCase())`
 Test: L1 T11: an invoice without a numeric, non-negative amount is refused before it runs
 
 ### S31 · workflow integrity · medium · confidence high
@@ -202,7 +206,8 @@ Test: L1 T13: editing a workflow graph writes an audit record naming the editor
 
 ### S33 · workflow integrity · medium · confidence medium
 Agent output is merged over the workflow's trusted variables, including `input`, so a model reply such as `{"input":{"amount":1}}`, reachable by prompt injection through invoice text, changes the amount the threshold reads. Read in code, not reproduced: it needs a provider.
-Evidence: `server/engine.ts#currentVariables = { ...currentVariables, ...agentResult.output, agentDecision: agentResult.output };`
+Fixed in L1 T11: agent output may add variables, but the run's input, and every input field at the top level, are written back over it.
+Evidence: `server/engine.ts#currentVariables = mergeAgentOutput(currentVariables, execution.input, agentResult.output);`, `server/tenancy.test.ts#agent output cannot overwrite the workflow input`
 Test: L1 T11: agent output cannot overwrite the workflow input
 
 ### S34 · audit integrity · medium · confidence high
@@ -212,7 +217,8 @@ Test: L1 T13: every CSV export row parses to nine cells, whatever the input
 
 ### S35 · persistence · medium · confidence high
 A deployment status update stores any value before its audit line runs. A missing or non-string status makes that line throw after the write, so the request fails with 500 while the bad status stays, and the deployments screen then fails to render it.
-Evidence: `server.ts#dep.status = status;`, `server.ts#DEPLOYMENT_${(status as string).toUpperCase()}`
+Fixed in L1 T11: the status must be active, suspended or rolled_back, checked before anything is written.
+Evidence: `server/schemas.ts#status: 'active|suspended|rolled_back'`, `server.ts#dep.status = status;`, `server/tenancy.test.ts#an invalid deployment status gets 400 and changes nothing`
 Test: L1 T11: an invalid deployment status gets 400 and changes nothing
 
 ### S36 · authentication · medium · confidence high
@@ -223,7 +229,8 @@ Test: L1 T3: an unknown user gets 401, and the me route lists only the caller's 
 
 ### S37 · availability · medium · confidence medium
 Nothing bounds the store. Any caller can append audit records forever, for example by switching context, bodies of up to 10 MB are stored, and every change rewrites the whole file synchronously. The retention setting is never applied (retention is L6 T4).
-Evidence: `server/storage.ts#this.state.auditLogs.unshift(auditEvent);`, `server.ts#app.use(express.json({ limit: '10mb' }));`
+Partly fixed in L1 T11: bodies are capped at 1 MB, answering 413 beyond it. Still open: audit records and other lists are never trimmed (retention is L6 T4).
+Evidence: `server/storage.ts#this.state.auditLogs.unshift(auditEvent);`, `server.ts#app.use(express.json({ limit: '1mb' }));`, `server/tenancy.test.ts#a request body over the limit gets 413`
 Test: L1 T11: a request body over the limit gets 413
 
 ### S38 · tenant isolation · medium · confidence high
@@ -234,5 +241,6 @@ Test: L1 T4: a deployment response carries no knowledge document text
 
 ### S39 · authentication · medium · confidence high
 Added in L1 T3, which introduced sign-in: nothing limits failed attempts, per account or per client, so a password can be guessed online at the speed scrypt allows. Read in code.
-Evidence: `server.ts#if (!verifyPassword(String(password ?? ''), user?.passwordHash) || !user) {`
+Fixed in L1 T11 for one account: five failed sign-ins for an email within fifteen minutes lock it until the oldest is fifteen minutes old, whatever password comes next, and unknown emails count the same way. Still open: one client may try many accounts (no limit per address).
+Evidence: `server.ts#const wait = signInLocked(email);`, `server/limits.ts#const MAX_FAILURES = 5;`, `server/tenancy.test.ts#repeated failed sign-ins for one account get 429`
 Test: L1 T11: repeated failed sign-ins for one account get 429
