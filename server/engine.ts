@@ -14,6 +14,9 @@ const ai = process.env.GEMINI_API_KEY
     })
   : null;
 
+// The client exists only if the key was in the environment when this module loaded.
+export const providerConfigured = () => ai !== null;
+
 export interface ExecutionContext {
   executionId: string;
   workflow: Workflow;

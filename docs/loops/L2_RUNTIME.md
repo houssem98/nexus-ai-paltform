@@ -19,7 +19,7 @@ Deciding rule, fixed before T2 starts: T0 to T10 are ticked, `npm run gate` exit
 
 - [x] T0 Re-verify. needs: none. Run graph-lint and refresh the citations that L0 and L1 changed. Evidence: graph-lint exits 0.
 - [ ] T1 (human) Provider key. needs: none. Put a `GEMINI_API_KEY` in a local `.env` file, which git ignores; never paste it into chat, code or logs. Evidence: a Journal line saying the key is provided, without its value.
-- [ ] T2 Provider truth. needs: T0, T1. One live call per configured model id; record the model name and usage metadata the provider returns, or the exact error. If an id does not exist, escalate the replacement. Save one response per model as a fixture, with no key in it, for offline tests. Evidence: the call output quoted in the Journal; an adapter contract test against the fixtures passes offline.
+- [ ] T2 Provider truth. needs: T0, T1, T13. One live call per configured model id; record the model name and usage metadata the provider returns, or the exact error. If an id does not exist, escalate the replacement. Save one response per model as a fixture, with no key in it, for offline tests. Evidence: the call output quoted in the Journal; an adapter contract test against the fixtures passes offline.
 - [ ] T3 Honest failure. needs: T2. Take usage and cost from the provider's metadata, and the reasoning trace from the provider or not at all; never add a `status: 'SUCCESS'` the provider did not send (both handed over by L0 T8); simulated answers only in demo mode with `simulated: true`, as since L0 T6. Evidence: tests: an injected provider error ends the execution failed with that error; with demo mode off no response carries `simulated`; an empty provider reply fails the node; usage, cost and trace match the recorded provider response.
 - [ ] T4 Invocation protocol. needs: T3. A versioned request and response shape for agent calls, validated against the agent's schemas (`server/storage.ts#inputSchema: Record<string, any>;`); the call asks for the model the agent's version names, which today is ignored (handed over by L0 T8). Evidence: tests: invalid input is rejected before the call; invalid output fails the node; the provider is asked for the model the agent's version names.
 - [ ] T5 Durable execution. needs: T4. Execute returns an execution id; an in-process worker runs a persisted job; ordered events and a checkpoint per node are persisted; clients poll the execution. Update every consumer in src in the same task (I6). Evidence: tests: events are ordered and persisted; the execution shows progress before it completes.
@@ -30,6 +30,7 @@ Deciding rule, fixed before T2 starts: T0 to T10 are ticked, `npm run gate` exit
 - [ ] T10 Independent check. needs: T3, T6, T7, T8, T9, T12. A different model, in at least 3 independent runs, applies the runtime and approval attacks. Evidence: findings quoted in the Journal; `npm run gate` exits 0.
 - [ ] T11 (human) Signoff. needs: T10. Includes approving the spend for one live smoke run of the golden path against the real provider. Evidence: the signoff line and the smoke run's output in the Journal.
 - [ ] T12 Run audit. needs: T5. Added in L1 T15 (S32): a workflow run started through its route writes an audit record (`server.ts#action: 'WORKFLOW_EXECUTED',`), while deployment runs and test-invokes write none. Every run, whichever route starts it, writes one audit record naming its trigger: the session user, or the deployment for a call made with its key. Evidence: test: a run started through each route writes one audit record naming its trigger.
+- [x] T13 Key loading. needs: none. Found after T0, while preparing T1: `server.ts` imports the engine (`server.ts#import { validateGraph, runWorkflowExecution, executeAgentDirectly } from './server/engine';`), which reads the key as its module loads (`server/engine.ts#const ai = process.env.GEMINI_API_KEY`), before `server.ts` loads `.env` (`server.ts#dotenv.config();`). A key kept only in `.env`, where T1 puts it, therefore never reaches the engine. Load `.env` before any server module. Evidence: test: a key kept only in .env reaches the engine.
 
 ## Journal
 
@@ -53,3 +54,24 @@ Deciding rule, fixed before T2 starts: T0 to T10 are ticked, `npm run gate` exit
   ```
 
   Direction: goal unchanged. L2 must make agents really execute, and every early stop and invented field that L0 and L1 left open now has a named test in the task that closes it. Next: T1 (human), the provider key. T2 to T12 all wait on it, and L3 and L5 wait on L2, so the loop stops here and escalates.
+- 2026-10-27 · L2/T13 · started T13
+- 2026-10-27 · L2/T13 · passed · gate green · commit see `git log --grep "loop(L2/T13)"` · `server.ts` imported the engine before it called `dotenv.config()`, and the engine builds its provider client as its module loads, so a key kept only in `.env` never reached it. Outside demo mode every agent call would still have failed with "No model provider answered"; in demo mode it would have fallen back to simulated answers. `server.ts` now loads `.env` with its first import, `import 'dotenv/config'`. `server/env.test.ts` writes a `.env` holding a fake key into a temporary directory, removes the variable from the environment, imports the server, and asks the engine whether it has a client. It failed first: `false !== true`. The engine exports `providerConfigured` for that test, and the test calls no provider. Evidence:
+
+  ```
+  $ node --import tsx --test server/env.test.ts   (before the fix)
+  ✖ a key kept only in .env reaches the engine
+    AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+    false !== true
+  $ node --import tsx --test server/env.test.ts
+  ✔ a key kept only in .env reaches the engine
+  $ npm run gate
+  graph-lint: 15 docs · 641 citations (110 file, 0 line range, 525 literal, 6 planned)
+  graph-lint: clean
+  ℹ tests 118
+  ℹ pass 118
+  ℹ fail 0
+  gate-guard: clean · HEAD..working tree
+  gate exit 0
+  ```
+
+  Direction: goal unchanged. Before this fix, the key the human is asked for would have gone unused by the running app; now T1 does what it says. Next: T1 (human), the provider key; T2 waits on it.

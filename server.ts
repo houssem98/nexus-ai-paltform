@@ -1,5 +1,6 @@
+// First, because modules below read the environment as they load (the engine reads the provider key).
+import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
-import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { db, simulatedScope, settingsOf, guardrailsOf, orgView, newId, type User } from './server/storage';
@@ -9,8 +10,6 @@ import { bodyProblem, problem, valid } from './server/schemas';
 import { rateLimited, signInFailed, signInLocked, signInSucceeded } from './server/limits';
 import { apiKeyMatches, hashApiKey, newApiKey, publicDeployment } from './server/auth';
 import { bootstrapAdmin, createSession, endSession, publicUser, readSession, sessionCookie, verifyPassword } from './server/auth';
-
-dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
