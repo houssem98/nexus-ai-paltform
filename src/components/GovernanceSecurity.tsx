@@ -153,7 +153,7 @@ export const GovernanceSecurity: React.FC<GovernanceSecurityProps> = ({
             >
               <span>Approvals Queue</span>
               {pendingApprovals.length > 0 && (
-                <span className="font-mono text-[10px] font-bold text-amber-400">
+                <span className="font-mono text-[11px] font-bold text-amber-400">
                   ({pendingApprovals.length})
                 </span>
               )}
@@ -193,7 +193,7 @@ export const GovernanceSecurity: React.FC<GovernanceSecurityProps> = ({
             <h2 className="text-sm font-semibold text-white">
               Human-in-the-Loop Signoff Decisions ({approvals.length})
             </h2>
-            <span className="text-xs text-slate-500">Autonomous flows pause until an authorized reviewer signs off</span>
+            <span className="text-xs text-slate-400">Autonomous flows pause until an authorized reviewer signs off</span>
           </div>
 
           <div className="space-y-3">
@@ -334,7 +334,7 @@ export const GovernanceSecurity: React.FC<GovernanceSecurityProps> = ({
                     <td className="py-3 capitalize text-slate-400">{log.resourceType}</td>
                     <td className="py-3 text-slate-300 max-w-xs truncate">{log.details}</td>
                     <td className="py-3 text-slate-400">{log.userEmail.split('@')[0]}</td>
-                    <td className="py-3 text-right font-mono text-slate-500 tabular-nums">{log.ipAddress}</td>
+                    <td className="py-3 text-right font-mono text-slate-400 tabular-nums">{log.ipAddress}</td>
                   </tr>
                 ))}
               </tbody>
@@ -347,7 +347,7 @@ export const GovernanceSecurity: React.FC<GovernanceSecurityProps> = ({
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-white">Role-Based Access Control (RBAC) Specification</h2>
-            <span className="text-xs text-slate-500">Defined roles, not enforced yet</span>
+            <span className="text-xs text-slate-400">Defined roles, not enforced yet</span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -362,7 +362,7 @@ export const GovernanceSecurity: React.FC<GovernanceSecurityProps> = ({
                   {r.permissions.map((p, j) => (
                     <span
                       key={j}
-                      className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/[0.03] text-slate-300 border border-white/[0.06]"
+                      className="text-[11px] font-mono px-2 py-0.5 rounded bg-white/[0.03] text-slate-300 border border-white/[0.06]"
                     >
                       {p}
                     </span>
@@ -410,7 +410,7 @@ export const GovernanceSecurity: React.FC<GovernanceSecurityProps> = ({
                       />
                       <span className="font-mono">{m}</span>
                       {m === 'gemini-4-argon' && (
-                        <span className="text-[10px] text-blue-400 font-mono font-medium">(High Thinking Default)</span>
+                        <span className="text-[11px] text-blue-400 font-mono font-medium">(High Thinking Default)</span>
                       )}
                     </label>
                   );
@@ -422,7 +422,7 @@ export const GovernanceSecurity: React.FC<GovernanceSecurityProps> = ({
               <label className="text-xs font-medium text-slate-200 block mb-1">
                 Audit Log Retention Window (Days)
               </label>
-              <input
+              <input aria-label="Audit Log Retention Window (Days)"
                 type="number"
                 min={30}
                 max={365}
@@ -430,7 +430,7 @@ export const GovernanceSecurity: React.FC<GovernanceSecurityProps> = ({
                 onChange={(e) => setSettings({ ...settings, dataRetentionDays: Number(e.target.value) })}
                 className="w-48 bg-white/[0.03] border border-white/[0.08] rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-white/20 font-mono"
               />
-              <span className="text-[11px] text-slate-500 block mt-1">Stored setting; nothing deletes old records yet</span>
+              <span className="text-[11px] text-slate-400 block mt-1">Stored setting; nothing deletes old records yet</span>
             </div>
 
             <div className="pt-2">

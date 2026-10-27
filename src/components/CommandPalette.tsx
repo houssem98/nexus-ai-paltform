@@ -67,7 +67,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         {/* Search Input */}
         <div className="p-4 border-b border-white/[0.08] flex items-center gap-3">
           <Search className="w-4 h-4 text-slate-400" />
-          <input
+          <input aria-label="Type a command, agent, or workflow"
             autoFocus
             type="text"
             placeholder="Type a command, agent, or workflow..."
@@ -75,7 +75,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             onChange={(e) => setQuery(e.target.value)}
             className="w-full bg-transparent text-slate-100 placeholder-slate-500 text-sm focus:outline-none"
           />
-          <button onClick={onClose} className="p-1 rounded-md text-slate-500 hover:text-slate-300">
+          <button aria-label="Close command palette" onClick={onClose} className="p-1 rounded-md text-slate-400 hover:text-slate-300">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -85,7 +85,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           {/* Diagnostic Action */}
           {onOpenVerifier && (
             <div>
-              <div className="px-3 py-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wider font-mono">
+              <div className="px-3 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider font-mono">
                 System Diagnostics
               </div>
               <button
@@ -99,7 +99,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   <ShieldCheck className="w-4 h-4 text-emerald-400" />
                   <span className="font-medium">Verify Platform (simulated self-test)</span>
                 </div>
-                <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
+                <span className="text-[11px] font-mono font-semibold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
                   DEMO
                 </span>
               </button>
@@ -108,7 +108,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
           {/* Quick Navigation */}
           <div>
-            <div className="px-3 py-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+            <div className="px-3 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
               Navigation
             </div>
             {filteredNav.map((item) => {
@@ -135,7 +135,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           {/* Agents */}
           {filteredAgents.length > 0 && (
             <div>
-              <div className="px-3 py-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+              <div className="px-3 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
                 Configured Agents
               </div>
               {filteredAgents.map((agent) => (
@@ -152,7 +152,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     <Bot className="w-4 h-4 text-blue-400 shrink-0" />
                     <span className="truncate">{agent.name}</span>
                   </div>
-                  <span className="text-xs text-slate-500 group-hover:text-slate-400">{agent.department}</span>
+                  <span className="text-xs text-slate-400 group-hover:text-slate-300">{agent.department}</span>
                 </button>
               ))}
             </div>
@@ -161,7 +161,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           {/* Workflows */}
           {filteredWorkflows.length > 0 && (
             <div>
-              <div className="px-3 py-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+              <div className="px-3 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
                 Workflows
               </div>
               {filteredWorkflows.map((wf) => (
@@ -178,7 +178,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     <GitBranch className="w-4 h-4 text-indigo-400 shrink-0" />
                     <span className="truncate">{wf.name}</span>
                   </div>
-                  <span className="text-xs text-slate-500 group-hover:text-slate-400">{wf.department}</span>
+                  <span className="text-xs text-slate-400 group-hover:text-slate-300">{wf.department}</span>
                 </button>
               ))}
             </div>
@@ -186,7 +186,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-2.5 px-4 bg-[#0A0D14] border-t border-white/[0.08] flex items-center justify-between text-[11px] text-slate-500">
+        <div className="p-2.5 px-4 bg-[#0A0D14] border-t border-white/[0.08] flex items-center justify-between text-[11px] text-slate-400">
           <span>Navigate with ↵ or click</span>
           <span>ESC to close</span>
         </div>

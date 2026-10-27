@@ -82,10 +82,10 @@ export const Header: React.FC<HeaderProps> = ({
         className="hidden xl:flex items-center justify-between w-72 px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.08] hover:border-white/[0.15] text-xs text-slate-400 hover:text-slate-300 transition shrink-0 ml-4 mr-4"
       >
         <div className="flex items-center gap-2 truncate">
-          <Search className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+          <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
           <span className="text-slate-400 font-normal truncate">Search agents, workflows, docs...</span>
         </div>
-        <kbd className="px-1.5 py-0.5 rounded bg-white/[0.06] text-[10px] font-mono text-slate-400 border border-white/[0.08] shrink-0">
+        <kbd className="px-1.5 py-0.5 rounded bg-white/[0.06] text-[11px] font-mono text-slate-400 border border-white/[0.08] shrink-0">
           ⌘K
         </kbd>
       </button>
@@ -130,7 +130,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           <div className="relative">
-            <select
+            <select aria-label="Switch user"
               value={currentUser?.id || ''}
               onChange={(e) => onSwitchUser(e.target.value)}
               title="Sign out and sign in as another user of this organization"
@@ -142,7 +142,7 @@ export const Header: React.FC<HeaderProps> = ({
                 </option>
               ))}
             </select>
-            <ChevronDown className="w-3 h-3 text-slate-500 pointer-events-none absolute right-2 top-2" />
+            <ChevronDown className="w-3 h-3 text-slate-400 pointer-events-none absolute right-2 top-2" />
           </div>
         </div>
       </div>

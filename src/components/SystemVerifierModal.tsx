@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useDialog } from '../lib/a11y';
 import { api } from '../lib/api';
 import { useToast } from '../context/ToastContext';
 import { SimulatedBadge } from './SimulatedBadge';
@@ -185,6 +186,7 @@ export const SystemVerifierModal: React.FC<SystemVerifierModalProps> = ({ isOpen
     }
   }, [isOpen]);
 
+  const dialogRef = useDialog<HTMLDivElement>(isOpen, onClose);
   if (!isOpen) return null;
 
   const passedCount = suites.filter((s) => s.status === 'passed').length;
@@ -233,7 +235,7 @@ export const SystemVerifierModal: React.FC<SystemVerifierModalProps> = ({ isOpen
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="w-full max-w-4xl bg-[#0D111A] border border-white/[0.1] rounded-xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Platform Feature Verifier" tabIndex={-1} className="w-full max-w-4xl bg-[#0D111A] border border-white/[0.1] rounded-xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
         {/* Header */}
         <div className="px-6 py-4 border-b border-white/[0.08] flex items-center justify-between bg-white/[0.02]">
           <div className="flex items-center gap-3">
@@ -281,23 +283,23 @@ export const SystemVerifierModal: React.FC<SystemVerifierModalProps> = ({ isOpen
         {/* Telemetry Strip */}
         <div className="grid grid-cols-4 gap-3 px-6 py-3 border-b border-white/[0.08] bg-[#0A0E17]">
           <div>
-            <span className="text-[11px] text-slate-500 uppercase tracking-wider font-mono">Passed Suites</span>
+            <span className="text-[11px] text-slate-400 uppercase tracking-wider font-mono">Passed Suites</span>
             <p className="text-base font-bold text-emerald-400 font-mono tabular-nums">{passedCount} / {suites.length}</p>
           </div>
           <div>
-            <span className="text-[11px] text-slate-500 uppercase tracking-wider font-mono">Failed Suites</span>
+            <span className="text-[11px] text-slate-400 uppercase tracking-wider font-mono">Failed Suites</span>
             <p className={`text-base font-bold font-mono tabular-nums ${failedCount > 0 ? 'text-red-400' : 'text-slate-400'}`}>
               {failedCount}
             </p>
           </div>
           <div>
-            <span className="text-[11px] text-slate-500 uppercase tracking-wider font-mono">Coverage</span>
+            <span className="text-[11px] text-slate-400 uppercase tracking-wider font-mono">Coverage</span>
             <p className="text-base font-bold text-slate-200 font-mono tabular-nums">
               {Math.round((passedCount / suites.length) * 100)}%
             </p>
           </div>
           <div>
-            <span className="text-[11px] text-slate-500 uppercase tracking-wider font-mono">Avg Latency</span>
+            <span className="text-[11px] text-slate-400 uppercase tracking-wider font-mono">Avg Latency</span>
             <p className="text-base font-bold text-slate-200 font-mono tabular-nums">{avgLatency ? `${avgLatency} ms` : '—'}</p>
           </div>
         </div>
@@ -339,7 +341,7 @@ export const SystemVerifierModal: React.FC<SystemVerifierModalProps> = ({ isOpen
             )}
           </div>
 
-          <div className="text-[11px] text-slate-500 font-mono">
+          <div className="text-[11px] text-slate-400 font-mono">
             Demo mode only
           </div>
         </div>
@@ -389,7 +391,7 @@ export const SystemVerifierModal: React.FC<SystemVerifierModalProps> = ({ isOpen
                 )}
 
                 {s.status === 'idle' && (
-                  <span className="text-[11px] font-mono text-slate-500 px-2 py-0.5 rounded bg-white/[0.04]">
+                  <span className="text-[11px] font-mono text-slate-400 px-2 py-0.5 rounded bg-white/[0.04]">
                     IDLE
                   </span>
                 )}

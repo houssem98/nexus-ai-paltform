@@ -104,7 +104,7 @@ export const WorkflowLibrary: React.FC<WorkflowLibraryProps> = ({
             className="p-5 rounded-xl bg-[#0E121C]/60 backdrop-blur-md border border-white/[0.08] hover:border-white/[0.16] transition flex flex-col justify-between group shadow-sm"
           >
             <div>
-              <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
+              <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
                 <span>{tpl.department}</span>
                 <span className="font-mono">{tpl.nodeCount} nodes</span>
               </div>

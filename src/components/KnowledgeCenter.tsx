@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { pressable, useDialog } from '../lib/a11y';
 import { Search, Plus, FileText, CheckCircle2, Trash2, RefreshCw, UploadCloud, Database, Sparkles } from 'lucide-react';
 import { api } from '../lib/api';
 import { useToast } from '../context/ToastContext';
@@ -19,6 +20,7 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ knowledge, onR
 
   // New Document modal
   const [showAddModal, setShowAddModal] = useState(false);
+  const dialogRef = useDialog<HTMLDivElement>(showAddModal, () => setShowAddModal(false));
   const [newTitle, setNewTitle] = useState('');
   const [newCategory, setNewCategory] = useState('Compliance & Legal');
   const [newContent, setNewContent] = useState('');
@@ -149,11 +151,11 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ knowledge, onR
       <div className="p-5 rounded-xl bg-[#0E121C]/60 backdrop-blur-md border border-white/[0.08] space-y-3 shadow-sm">
         <div className="flex items-center justify-between text-xs">
           <span className="font-medium text-slate-300">Retrieval & Citation Sandbox</span>
-          <span className="text-slate-500 font-mono text-[11px]">Substring match, no ranking yet</span>
+          <span className="text-slate-400 font-mono text-[11px]">Substring match, no ranking yet</span>
         </div>
 
         <div className="flex gap-2">
-          <input
+          <input aria-label="Type a policy query to test grounding"
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -178,7 +180,7 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ knowledge, onR
                   <span className="text-emerald-400 font-mono tabular-nums">Relevance: {(res.relevanceScore * 100).toFixed(0)}%</span>
                 </div>
                 <p className="text-slate-300 leading-relaxed italic">&ldquo;{res.text}&rdquo;</p>
-                <div className="text-[10px] text-slate-500 flex items-center gap-2 pt-0.5">
+                <div className="text-[11px] text-slate-400 flex items-center gap-2 pt-0.5">
                   <span>Section: {res.section}</span>
                   <span aria-hidden="true">·</span>
                   <span className="font-mono">Chunk: {res.chunkId}</span>
@@ -196,7 +198,7 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ knowledge, onR
             <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
               Corpus Collection ({knowledge.length})
             </h2>
-            <span className="text-[10px] font-mono text-slate-400">Chunked</span>
+            <span className="text-[11px] font-mono text-slate-400">Chunked</span>
           </div>
 
           <div className="space-y-1.5">
@@ -205,7 +207,7 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ knowledge, onR
               return (
                 <div
                   key={doc.id}
-                  onClick={() => setSelectedDocId(doc.id)}
+                  {...pressable(() => setSelectedDocId(doc.id))}
                   className={`p-3 rounded-lg border text-xs cursor-pointer transition ${
                     isSelected
                       ? 'bg-white/[0.08] border-white/20 text-white shadow-sm'
@@ -218,7 +220,7 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ knowledge, onR
                       <span className="truncate">{doc.title}</span>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between text-[11px] text-slate-500">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400">
                     <span>{doc.category}</span>
                     <span className="font-mono tabular-nums">{doc.chunkCount} chunks</span>
                   </div>
@@ -251,9 +253,9 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ knowledge, onR
                     <span>{isReindexing ? 'Re-indexing...' : 'Re-index'}</span>
                   </button>
 
-                  <button
+                  <button aria-label="Delete document from corpus"
                     onClick={() => handleDeleteDocument(selectedDoc.id)}
-                    className="p-1.5 rounded-md text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                    className="p-1.5 rounded-md text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition"
                     title="Delete document from corpus"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -264,11 +266,11 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ knowledge, onR
               <div className="space-y-2.5">
                 <div className="text-xs font-medium text-slate-400 uppercase tracking-wider flex items-center justify-between">
                   <span>Indexed Passages & Citations</span>
-                  <span className="text-[11px] font-mono text-slate-500">Substring match</span>
+                  <span className="text-[11px] font-mono text-slate-400">Substring match</span>
                 </div>
                 {selectedDoc.chunks?.map((chunk: any) => (
                   <div key={chunk.id} className="p-3 rounded-lg bg-white/[0.02] border border-white/[0.05] text-xs space-y-1">
-                    <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+                    <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
                       <span className="text-slate-300 font-semibold">{chunk.section || 'General Clause'}</span>
                       <span>ID: {chunk.id}</span>
                     </div>
@@ -278,7 +280,7 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ knowledge, onR
               </div>
             </div>
           ) : (
-            <div className="text-slate-500 text-xs text-center py-12">Select a document from the corpus.</div>
+            <div className="text-slate-400 text-xs text-center py-12">Select a document from the corpus.</div>
           )}
         </div>
       </div>
@@ -286,7 +288,7 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ knowledge, onR
       {/* Ingestion Modal with File Upload */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div
+          <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Ingest Grounding Document" tabIndex={-1}
             className="w-full max-w-lg bg-[#0F131D] border border-white/[0.1] rounded-2xl p-6 shadow-2xl space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
@@ -295,13 +297,13 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ knowledge, onR
                 <h3 className="text-sm font-semibold text-white">Ingest Grounding Document</h3>
                 <p className="text-xs text-slate-400">Deterministic chunking with verifiable citation anchors</p>
               </div>
-              <button onClick={() => setShowAddModal(false)} className="text-slate-500 hover:text-white">✕</button>
+              <button aria-label="Close" onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-white">✕</button>
             </div>
 
             <form onSubmit={handleAddDocument} className="space-y-4">
               {/* File Upload Drop Zone */}
               <div className="p-4 rounded-xl border border-dashed border-white/[0.15] bg-white/[0.02] hover:bg-white/[0.04] transition text-center cursor-pointer relative">
-                <input
+                <input aria-label="Upload document file"
                   type="file"
                   accept=".txt,.md,.json,.csv"
                   onChange={handleFileUpload}
@@ -311,12 +313,12 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ knowledge, onR
                 <div className="text-xs text-slate-300 font-medium">
                   {fileName ? `Loaded: ${fileName}` : 'Choose or drop a file (.txt, .md, .json)'}
                 </div>
-                <div className="text-[10px] text-slate-500 mt-0.5">Max 10MB per document</div>
+                <div className="text-[11px] text-slate-400 mt-0.5">Max 10MB per document</div>
               </div>
 
               <div>
                 <label className="text-xs font-medium text-slate-300 block mb-1">Title</label>
-                <input
+                <input aria-label="Title"
                   type="text"
                   required
                   value={newTitle}
@@ -328,7 +330,7 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ knowledge, onR
 
               <div>
                 <label className="text-xs font-medium text-slate-300 block mb-1">Category</label>
-                <select
+                <select aria-label="Category"
                   value={newCategory}
                   onChange={(e) => setNewCategory(e.target.value)}
                   className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-white/20"
@@ -342,7 +344,7 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ knowledge, onR
 
               <div>
                 <label className="text-xs font-medium text-slate-300 block mb-1">Content (Paragraphs will be auto-chunked)</label>
-                <textarea
+                <textarea aria-label="Content (Paragraphs will be auto-chunked)"
                   required
                   rows={6}
                   value={newContent}

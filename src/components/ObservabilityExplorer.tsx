@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { pressable } from '../lib/a11y';
 import { BrainCircuit, XCircle, Clock, CheckCircle2, AlertTriangle, ShieldAlert, Download } from 'lucide-react';
 import { api } from '../lib/api';
 import { useToast } from '../context/ToastContext';
@@ -93,7 +94,7 @@ export const ObservabilityExplorer: React.FC<ObservabilityExplorerProps> = ({
             <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
               Recorded Executions ({filtered.length})
             </h2>
-            <span className="text-[10px] font-mono text-slate-500">Persisted</span>
+            <span className="text-[11px] font-mono text-slate-400">Persisted</span>
           </div>
 
           <div className="space-y-1.5 overflow-y-auto max-h-[580px]">
@@ -102,7 +103,7 @@ export const ObservabilityExplorer: React.FC<ObservabilityExplorerProps> = ({
               return (
                 <div
                   key={exec.id}
-                  onClick={() => setSelectedExecId(exec.id)}
+                  {...pressable(() => setSelectedExecId(exec.id))}
                   className={`p-3 rounded-lg border text-xs cursor-pointer transition ${
                     isSelected
                       ? 'bg-white/[0.08] border-white/20 text-white shadow-sm'
@@ -112,7 +113,7 @@ export const ObservabilityExplorer: React.FC<ObservabilityExplorerProps> = ({
                   <div className="flex items-center justify-between font-mono text-[11px] mb-1">
                     <span className="font-semibold text-slate-200 truncate">{exec.workflowName}</span>
                     <span
-                      className={`text-[10px] font-medium capitalize ${
+                      className={`text-[11px] font-medium capitalize ${
                         exec.status === 'completed'
                           ? 'text-emerald-400'
                           : exec.status === 'waiting_approval'
@@ -128,7 +129,7 @@ export const ObservabilityExplorer: React.FC<ObservabilityExplorerProps> = ({
                     </span>
                   </div>
 
-                  <div className="text-[11px] text-slate-500 flex items-center justify-between font-mono">
+                  <div className="text-[11px] text-slate-400 flex items-center justify-between font-mono">
                     <span>{exec.id.slice(0, 16)}</span>
                     <span className="tabular-nums">{exec.durationMs ? `${(exec.durationMs / 1000).toFixed(2)}s` : '—'}</span>
                   </div>
@@ -147,7 +148,7 @@ export const ObservabilityExplorer: React.FC<ObservabilityExplorerProps> = ({
                   <div className="flex items-center gap-2">
                     <h2 className="text-sm font-semibold text-white">{selectedExec.workflowName}</h2>
                     <span
-                      className={`text-[10px] font-mono px-1.5 py-0.2 rounded border ${
+                      className={`text-[11px] font-mono px-1.5 py-0.2 rounded border ${
                         selectedExec.status === 'completed'
                           ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
                           : selectedExec.status === 'waiting_approval'
@@ -169,11 +170,11 @@ export const ObservabilityExplorer: React.FC<ObservabilityExplorerProps> = ({
 
                 <div className="flex items-center gap-4 text-xs font-mono">
                   <div>
-                    <span className="text-slate-500 text-[10px] block">TOKENS</span>
+                    <span className="text-slate-400 text-[11px] block">TOKENS</span>
                     <span className="text-slate-200 font-semibold tabular-nums">{selectedExec.totalTokens ?? '—'}</span>
                   </div>
                   <div>
-                    <span className="text-slate-500 text-[10px] block">COST</span>
+                    <span className="text-slate-400 text-[11px] block">COST</span>
                     <span className="text-white font-semibold tabular-nums">{selectedExec.totalCostUsd != null ? `$${selectedExec.totalCostUsd.toFixed(4)}` : '—'}</span>
                   </div>
 
@@ -203,14 +204,14 @@ export const ObservabilityExplorer: React.FC<ObservabilityExplorerProps> = ({
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <span className="text-[11px] font-mono text-slate-500">0{idx + 1}.</span>
+                          <span className="text-[11px] font-mono text-slate-400">0{idx + 1}.</span>
                           <span className="font-medium text-slate-200">{step.nodeLabel}</span>
-                          <span className="text-[10px] font-mono text-slate-500 uppercase">{step.nodeType}</span>
+                          <span className="text-[11px] font-mono text-slate-400 uppercase">{step.nodeType}</span>
                           {(step.simulated || step.output?.simulated) && <SimulatedBadge label="Simulated" />}
                         </div>
 
                         <div className="flex items-center gap-3 font-mono text-[11px]">
-                          <span className="text-slate-500 tabular-nums">{step.durationMs != null ? `${step.durationMs}ms` : '—'}</span>
+                          <span className="text-slate-400 tabular-nums">{step.durationMs != null ? `${step.durationMs}ms` : '—'}</span>
                           <span
                             className={`font-medium ${
                               step.status === 'success'
@@ -227,7 +228,7 @@ export const ObservabilityExplorer: React.FC<ObservabilityExplorerProps> = ({
 
                       {step.thinkingDetails && (
                         <div className="p-2.5 rounded-md bg-white/[0.03] border border-white/[0.06] text-[11px] font-mono text-slate-300">
-                          <div className="text-[10px] uppercase font-bold text-slate-400 mb-1 flex items-center gap-1">
+                          <div className="text-[11px] uppercase font-bold text-slate-400 mb-1 flex items-center gap-1">
                             <BrainCircuit className="w-3 h-3 text-blue-400" />
                             <span>Thinking trace</span>
                           </div>
@@ -244,7 +245,7 @@ export const ObservabilityExplorer: React.FC<ObservabilityExplorerProps> = ({
               </div>
             </div>
           ) : (
-            <div className="text-slate-500 text-xs text-center py-12">Select an execution from the list.</div>
+            <div className="text-slate-400 text-xs text-center py-12">Select an execution from the list.</div>
           )}
         </div>
       </div>

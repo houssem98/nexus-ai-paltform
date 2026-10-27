@@ -95,25 +95,25 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
         <div className="p-5">
           <div className="text-xs text-slate-400 mb-1.5">Agent Fleet</div>
           <div className="text-2xl font-semibold text-white font-mono tabular-nums">{agents.length}</div>
-          <div className="text-[11px] text-slate-500 mt-1">Autonomous reasoning units</div>
+          <div className="text-[11px] text-slate-400 mt-1">Autonomous reasoning units</div>
         </div>
 
         <div className="p-5">
           <div className="text-xs text-slate-400 mb-1.5">Active Pipelines</div>
           <div className="text-2xl font-semibold text-white font-mono tabular-nums">{workflows.length}</div>
-          <div className="text-[11px] text-slate-500 mt-1">{deployments.length} endpoints published</div>
+          <div className="text-[11px] text-slate-400 mt-1">{deployments.length} endpoints published</div>
         </div>
 
         <div className="p-5">
           <div className="text-xs text-slate-400 mb-1.5">Success Rate</div>
           <div className="text-2xl font-semibold text-white font-mono tabular-nums">{successRate}</div>
-          <div className="text-[11px] text-slate-500 mt-1">Completed runs out of all stored runs</div>
+          <div className="text-[11px] text-slate-400 mt-1">Completed runs out of all stored runs</div>
         </div>
 
         <div className="p-5">
           <div className="text-xs text-slate-400 mb-1.5">Recorded Cost (all runs)</div>
           <div className="text-2xl font-semibold text-white font-mono tabular-nums">${totalCost.toFixed(4)}</div>
-          <div className="text-[11px] text-slate-500 mt-1">Gemini 4 Argon inference</div>
+          <div className="text-[11px] text-slate-400 mt-1">Gemini 4 Argon inference</div>
         </div>
       </div>
 

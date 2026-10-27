@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { pressable, useDialog } from '../lib/a11y';
 import {
   Key,
   Play,
@@ -33,6 +34,7 @@ export const DeploymentCenter: React.FC<DeploymentCenterProps> = ({
 
   // Modal to deploy new workflow
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const dialogRef = useDialog<HTMLDivElement>(showCreateModal, () => setShowCreateModal(false));
   const [deployWorkflowId, setDeployWorkflowId] = useState<string>(workflows[0]?.id || '');
   const [deployName, setDeployName] = useState('');
   const [deployEnv, setDeployEnv] = useState<'production' | 'staging' | 'sandbox'>('production');
@@ -201,7 +203,7 @@ export const DeploymentCenter: React.FC<DeploymentCenterProps> = ({
           return (
             <div
               key={dep.id}
-              onClick={() => setSelectedDepId(dep.id)}
+              {...pressable(() => setSelectedDepId(dep.id))}
               className={`p-5 rounded-xl border cursor-pointer transition shadow-sm backdrop-blur-md flex flex-col justify-between ${
                 isSelected
                   ? 'bg-[#0E121C]/90 border-white/20'
@@ -215,7 +217,7 @@ export const DeploymentCenter: React.FC<DeploymentCenterProps> = ({
                       {dep.environment}
                     </span>
                     <span
-                      className={`text-[10px] font-mono px-1.5 py-0.2 rounded border ${
+                      className={`text-[11px] font-mono px-1.5 py-0.2 rounded border ${
                         isActive
                           ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
                           : isSuspended
@@ -226,7 +228,7 @@ export const DeploymentCenter: React.FC<DeploymentCenterProps> = ({
                       {dep.status}
                     </span>
                   </div>
-                  <span className="text-xs text-slate-500 font-mono">v{dep.workflowVersion}</span>
+                  <span className="text-xs text-slate-400 font-mono">v{dep.workflowVersion}</span>
                 </div>
 
                 <h3 className="text-sm font-semibold text-white mb-1">{dep.name}</h3>
@@ -282,12 +284,12 @@ export const DeploymentCenter: React.FC<DeploymentCenterProps> = ({
                   </button>
                 </div>
 
-                <button
+                <button aria-label="Decommission endpoint"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleDeleteDeployment(dep.id);
                   }}
-                  className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                  className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition"
                   title="Decommission endpoint"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -305,7 +307,7 @@ export const DeploymentCenter: React.FC<DeploymentCenterProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-sm font-semibold text-white">Live Ingress Gateway</h2>
-                <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.2 rounded">
+                <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.2 rounded">
                   {selectedDep.status.toUpperCase()}
                 </span>
               </div>
@@ -341,13 +343,13 @@ export const DeploymentCenter: React.FC<DeploymentCenterProps> = ({
           <div className="space-y-3 pt-3 border-t border-white/[0.06]">
             <div className="flex items-center justify-between text-xs">
               <span className="font-medium text-slate-300">Live API Execution Sandbox</span>
-              <span className="text-slate-500 font-mono text-[11px]">HTTP POST /api/v1/deployments/:id/execute</span>
+              <span className="text-slate-400 font-mono text-[11px]">HTTP POST /api/v1/deployments/:id/execute</span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="text-[11px] text-slate-400 block mb-1 font-mono">Payload JSON (Body):</label>
-                <textarea
+                <textarea aria-label="Payload JSON (Body)"
                   value={testPayload}
                   onChange={(e) => setTestPayload(e.target.value)}
                   rows={6}
@@ -378,7 +380,7 @@ export const DeploymentCenter: React.FC<DeploymentCenterProps> = ({
                   {callResponse ? (
                     JSON.stringify(callResponse, null, 2)
                   ) : (
-                    <span className="text-slate-600">Click &ldquo;Execute Authenticated API Call&rdquo; to test endpoint.</span>
+                    <span className="text-slate-400">Click &ldquo;Execute Authenticated API Call&rdquo; to test endpoint.</span>
                   )}
                 </div>
               </div>
@@ -390,7 +392,7 @@ export const DeploymentCenter: React.FC<DeploymentCenterProps> = ({
       {/* Create Deployment Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
-          <div
+          <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Publish Workflow to Ingress Gateway" tabIndex={-1}
             className="w-full max-w-lg bg-[#0E121C] border border-white/[0.12] rounded-2xl p-6 shadow-2xl space-y-5"
             onClick={(e) => e.stopPropagation()}
           >
@@ -406,7 +408,7 @@ export const DeploymentCenter: React.FC<DeploymentCenterProps> = ({
             <form onSubmit={handleCreateDeployment} className="space-y-4">
               <div>
                 <label className="text-xs text-slate-300 block mb-1">Select Pipeline / Workflow</label>
-                <select
+                <select aria-label="Select Pipeline / Workflow"
                   value={deployWorkflowId}
                   onChange={(e) => setDeployWorkflowId(e.target.value)}
                   className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-white/20"
@@ -421,7 +423,7 @@ export const DeploymentCenter: React.FC<DeploymentCenterProps> = ({
 
               <div>
                 <label className="text-xs text-slate-300 block mb-1">Deployment Name</label>
-                <input
+                <input aria-label="Deployment Name"
                   type="text"
                   value={deployName}
                   onChange={(e) => setDeployName(e.target.value)}
@@ -433,7 +435,7 @@ export const DeploymentCenter: React.FC<DeploymentCenterProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-slate-300 block mb-1">Environment</label>
-                  <select
+                  <select aria-label="Environment"
                     value={deployEnv}
                     onChange={(e: any) => setDeployEnv(e.target.value)}
                     className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-white/20"
@@ -446,7 +448,7 @@ export const DeploymentCenter: React.FC<DeploymentCenterProps> = ({
 
                 <div>
                   <label className="text-xs text-slate-300 block mb-1">Rate Limit (req/min)</label>
-                  <input
+                  <input aria-label="Rate Limit (req/min)"
                     type="number"
                     value={deployRateLimit}
                     onChange={(e) => setDeployRateLimit(Number(e.target.value))}

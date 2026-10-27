@@ -217,7 +217,7 @@ export const ExecutionTrendsChart: React.FC<ExecutionTrendsChartProps> = ({ agen
                 </option>
               ))}
             </select>
-            <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">
+            <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-slate-400">
               ▼
             </div>
           </div>
@@ -241,7 +241,7 @@ export const ExecutionTrendsChart: React.FC<ExecutionTrendsChartProps> = ({ agen
           </div>
 
           {/* Refresh Action */}
-          <button
+          <button aria-label="Refresh time-series metrics"
             onClick={() => fetchTrends(true)}
             disabled={isRefreshing}
             title="Refresh time-series metrics"
@@ -271,7 +271,7 @@ export const ExecutionTrendsChart: React.FC<ExecutionTrendsChartProps> = ({ agen
               {summary ? summary.totalExecutions.toLocaleString() : '—'}
             </div>
           </div>
-          <span className="text-[10px] text-slate-500 font-mono">runs</span>
+          <span className="text-[11px] text-slate-400 font-mono">runs</span>
         </button>
 
         <button
@@ -291,7 +291,7 @@ export const ExecutionTrendsChart: React.FC<ExecutionTrendsChartProps> = ({ agen
               {summary ? `${(summary.totalTokens / 1000000).toFixed(2)}M` : '—'}
             </div>
           </div>
-          <span className="text-[10px] text-slate-500 font-mono">total</span>
+          <span className="text-[11px] text-slate-400 font-mono">total</span>
         </button>
 
         <button
@@ -311,7 +311,7 @@ export const ExecutionTrendsChart: React.FC<ExecutionTrendsChartProps> = ({ agen
               {summary ? `$${summary.totalCostUsd.toFixed(3)}` : '—'}
             </div>
           </div>
-          <span className="text-[10px] text-slate-500 font-mono">USD</span>
+          <span className="text-[11px] text-slate-400 font-mono">USD</span>
         </button>
 
         <button
@@ -331,14 +331,14 @@ export const ExecutionTrendsChart: React.FC<ExecutionTrendsChartProps> = ({ agen
               {summary?.avgLatencyMs != null ? `${summary.avgLatencyMs}ms` : '—'}
             </div>
           </div>
-          <span className="text-[10px] text-slate-500 font-mono">avg</span>
+          <span className="text-[11px] text-slate-400 font-mono">avg</span>
         </button>
       </div>
 
       {/* Primary Recharts Visualization Area */}
       <div className="relative pt-1">
         {loading ? (
-          <div className="h-64 flex items-center justify-center text-slate-500 text-xs font-mono">
+          <div className="h-64 flex items-center justify-center text-slate-400 text-xs font-mono">
             Loading 30-day time-series telemetry...
           </div>
         ) : (
@@ -375,7 +375,7 @@ export const ExecutionTrendsChart: React.FC<ExecutionTrendsChartProps> = ({ agen
                         <div className="rounded-lg border border-white/[0.12] bg-[#090D16]/95 backdrop-blur-md p-3 shadow-2xl text-xs space-y-2 min-w-[200px]">
                           <div className="font-semibold text-white border-b border-white/[0.08] pb-1 flex items-center justify-between">
                             <span>{data.displayDate}</span>
-                            <span className="text-[10px] font-mono text-slate-400">{data.date}</span>
+                            <span className="text-[11px] font-mono text-slate-400">{data.date}</span>
                           </div>
                           <div className="space-y-1.5 text-slate-300">
                             <div className="flex items-center justify-between">
@@ -388,8 +388,8 @@ export const ExecutionTrendsChart: React.FC<ExecutionTrendsChartProps> = ({ agen
                               <span className="text-slate-400">Completed / Failed:</span>
                               <span className="font-mono tabular-nums text-emerald-400">
                                 {data.completed}{' '}
-                                <span className="text-slate-500">/</span>{' '}
-                                <span className={data.failed > 0 ? 'text-rose-400' : 'text-slate-500'}>
+                                <span className="text-slate-400">/</span>{' '}
+                                <span className={data.failed > 0 ? 'text-rose-400' : 'text-slate-400'}>
                                   {data.failed}
                                 </span>
                               </span>
@@ -442,19 +442,19 @@ export const ExecutionTrendsChart: React.FC<ExecutionTrendsChartProps> = ({ agen
       {/* Sub-Metric Summary Strip */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-3 border-t border-white/[0.06] text-xs">
         <div>
-          <span className="text-slate-500 block text-[11px]">{metricConfig.summaryLabel}</span>
+          <span className="text-slate-400 block text-[11px]">{metricConfig.summaryLabel}</span>
           <span className="font-mono font-semibold text-slate-200 text-sm tabular-nums">
             {metricConfig.summaryValue}
           </span>
         </div>
         <div>
-          <span className="text-slate-500 block text-[11px]">{metricConfig.secondaryLabel}</span>
+          <span className="text-slate-400 block text-[11px]">{metricConfig.secondaryLabel}</span>
           <span className="font-mono font-semibold text-slate-200 text-sm tabular-nums">
             {metricConfig.secondaryValue}
           </span>
         </div>
         <div>
-          <span className="text-slate-500 block text-[11px]">Peak Load Day</span>
+          <span className="text-slate-400 block text-[11px]">Peak Load Day</span>
           <span className="font-mono font-semibold text-slate-200 text-sm tabular-nums">
             {summary?.peakDay ? `${summary.peakDay.displayDate} (${summary.peakDay.executions} runs)` : '—'}
           </span>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { pressable } from '../lib/a11y';
 import {
   Bot,
   BrainCircuit,
@@ -200,7 +201,7 @@ export const AgentStudio: React.FC<AgentStudioProps> = ({
             return (
               <div
                 key={ag.id}
-                onClick={() => handleSelectAgent(ag)}
+                {...pressable(() => handleSelectAgent(ag))}
                 className={`p-3 rounded-xl border text-xs cursor-pointer transition-colors ${
                   isSelected
                     ? 'bg-white/[0.08] border-white/20 text-white shadow-sm'
@@ -209,10 +210,10 @@ export const AgentStudio: React.FC<AgentStudioProps> = ({
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className="font-medium text-slate-200 truncate">{ag.name}</span>
-                  <span className="text-[10px] text-slate-500 font-mono">v{ag.activeVersion}</span>
+                  <span className="text-[11px] text-slate-400 font-mono">v{ag.activeVersion}</span>
                 </div>
                 <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">{ag.description}</p>
-                <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500">
+                <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
                   <span>{ag.department}</span>
                   <span className="font-mono text-slate-400">{ag.versions?.find((v: any) => v.version === ag.activeVersion)?.model ?? '—'}</span>
                 </div>
@@ -229,7 +230,7 @@ export const AgentStudio: React.FC<AgentStudioProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-semibold text-white">{name || 'Agent Studio'}</h2>
-              <span className="text-[11px] text-slate-500 font-normal">· {department}</span>
+              <span className="text-[11px] text-slate-400 font-normal">· {department}</span>
             </div>
           </div>
 
@@ -301,7 +302,7 @@ export const AgentStudio: React.FC<AgentStudioProps> = ({
             <div className="space-y-4 max-w-2xl">
               <div>
                 <label className="text-xs font-medium text-slate-300 block mb-1">Agent Name</label>
-                <input
+                <input aria-label="Agent Name"
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -312,7 +313,7 @@ export const AgentStudio: React.FC<AgentStudioProps> = ({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-medium text-slate-300 block mb-1">Department</label>
-                  <select
+                  <select aria-label="Department"
                     value={department}
                     onChange={(e) => setDepartment(e.target.value)}
                     className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-white/20"
@@ -326,7 +327,7 @@ export const AgentStudio: React.FC<AgentStudioProps> = ({
 
                 <div>
                   <label className="text-xs font-medium text-slate-300 block mb-1">Model Engine</label>
-                  <select
+                  <select aria-label="Model Engine"
                     value={model}
                     onChange={(e) => setModel(e.target.value)}
                     className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-white/20"
@@ -363,7 +364,7 @@ export const AgentStudio: React.FC<AgentStudioProps> = ({
 
               <div>
                 <label className="text-xs font-medium text-slate-300 block mb-1">Description</label>
-                <textarea
+                <textarea aria-label="Description"
                   rows={3}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -376,7 +377,7 @@ export const AgentStudio: React.FC<AgentStudioProps> = ({
                   <label className="text-xs font-medium text-slate-300 block mb-1">
                     Temperature ({temperature})
                   </label>
-                  <input
+                  <input aria-label="Temperature"
                     type="range"
                     min="0"
                     max="1"
@@ -391,7 +392,7 @@ export const AgentStudio: React.FC<AgentStudioProps> = ({
                   <label className="text-xs font-medium text-slate-300 block mb-1">
                     Max Steps ({maxSteps})
                   </label>
-                  <input
+                  <input aria-label="Max Steps"
                     type="number"
                     min="1"
                     max="20"
@@ -410,7 +411,7 @@ export const AgentStudio: React.FC<AgentStudioProps> = ({
                 <label className="text-xs font-medium text-slate-300 block mb-1">
                   System Directives
                 </label>
-                <textarea
+                <textarea aria-label="System Directives"
                   rows={13}
                   value={systemPrompt}
                   onChange={(e) => setSystemPrompt(e.target.value)}
@@ -460,14 +461,14 @@ export const AgentStudio: React.FC<AgentStudioProps> = ({
             Interactive Test Sandbox
           </span>
           {thinkingMode && (
-            <span className="text-[10px] font-mono text-blue-400">High Thinking</span>
+            <span className="text-[11px] font-mono text-blue-400">High Thinking</span>
           )}
         </div>
 
         {/* Input area */}
         <div className="space-y-2">
           <label className="text-[11px] font-medium text-slate-400">Prompt / Payload</label>
-          <textarea
+          <textarea aria-label="Prompt / Payload"
             rows={4}
             value={testInput}
             onChange={(e) => setTestInput(e.target.value)}
@@ -497,7 +498,7 @@ export const AgentStudio: React.FC<AgentStudioProps> = ({
           <label className="text-[11px] font-medium text-slate-400 mb-1.5 flex items-center justify-between">
             <span>Execution Trace & Output</span>
             {testResult?.modelUsed && (
-              <span className="flex items-center gap-1.5 text-[10px] font-mono text-slate-500">
+              <span className="flex items-center gap-1.5 text-[11px] font-mono text-slate-400">
                 {testResult.modelUsed}
                 {testResult.simulated && <SimulatedBadge />}
               </span>
@@ -506,14 +507,14 @@ export const AgentStudio: React.FC<AgentStudioProps> = ({
 
           <div className="flex-1 bg-white/[0.02] border border-white/[0.06] rounded-lg p-3 overflow-y-auto font-mono text-xs space-y-3">
             {!testResult && !testing && (
-              <div className="h-full flex items-center justify-center text-slate-500 text-center text-xs p-4">
+              <div className="h-full flex items-center justify-center text-slate-400 text-center text-xs p-4">
                 Click &quot;Run Agent Reasoning&quot; to test model instructions and inspect the step-by-step thinking trace.
               </div>
             )}
 
             {testResult?.thinkingTrace && (
               <div className="p-2.5 rounded-lg bg-white/[0.03] border border-white/[0.08] text-[11px] text-slate-300">
-                <div className="text-[10px] uppercase font-bold text-slate-400 mb-1 flex items-center gap-1">
+                <div className="text-[11px] uppercase font-bold text-slate-400 mb-1 flex items-center gap-1">
                   <BrainCircuit className="w-3 h-3 text-blue-400" />
                   <span>Thinking Trace</span>
                 </div>
@@ -523,7 +524,7 @@ export const AgentStudio: React.FC<AgentStudioProps> = ({
 
             {testResult?.output && (
               <div>
-                <div className="text-[10px] uppercase font-bold text-emerald-400 mb-1">Structured Output</div>
+                <div className="text-[11px] uppercase font-bold text-emerald-400 mb-1">Structured Output</div>
                 <pre className="text-slate-200 text-[11px] whitespace-pre-wrap">
                   {typeof testResult.output === 'object'
                     ? JSON.stringify(testResult.output, null, 2)
@@ -533,7 +534,7 @@ export const AgentStudio: React.FC<AgentStudioProps> = ({
             )}
 
             {testResult?.tokensUsed && (
-              <div className="pt-2 border-t border-white/[0.06] text-[10px] text-slate-500 flex items-center justify-between tabular-nums">
+              <div className="pt-2 border-t border-white/[0.06] text-[11px] text-slate-400 flex items-center justify-between tabular-nums">
                 <span>Tokens: {testResult.tokensUsed}</span>
                 <span>Cost: {testResult.costUsd != null ? `$${testResult.costUsd.toFixed(4)}` : '—'}</span>
               </div>

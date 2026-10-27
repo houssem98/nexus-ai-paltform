@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useDialog } from '../lib/a11y';
 import { Blocks, CheckCircle2, RefreshCw, Shield, Plus, Trash2, Globe, Key, Lock, ArrowUpDown } from 'lucide-react';
 import { api } from '../lib/api';
 import { useToast } from '../context/ToastContext';
@@ -20,6 +21,7 @@ export const IntegrationsCatalog: React.FC<IntegrationsCatalogProps> = ({
 
   // New Connector modal
   const [showAddModal, setShowAddModal] = useState(false);
+  const dialogRef = useDialog<HTMLDivElement>(showAddModal, () => setShowAddModal(false));
   const [name, setName] = useState('');
   const [category, setCategory] = useState<'api' | 'communication' | 'crm' | 'database' | 'finance' | 'security' | 'mcp'>('api');
   const [description, setDescription] = useState('');
@@ -140,9 +142,9 @@ export const IntegrationsCatalog: React.FC<IntegrationsCatalogProps> = ({
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs text-slate-300 font-medium capitalize">{item.status}</span>
-                    <button
+                    <button aria-label="Remove connector"
                       onClick={() => handleDeleteConnector(item.id)}
-                      className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                      className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition"
                       title="Remove connector"
                     >
                       <Trash2 className="w-3 h-3" />
@@ -159,13 +161,13 @@ export const IntegrationsCatalog: React.FC<IntegrationsCatalogProps> = ({
                 )}
 
                 <div className="mt-3 flex flex-wrap gap-1.5">
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20 uppercase">
+                  <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20 uppercase">
                     {item.authType || 'BEARER'}
                   </span>
                   {item.permissionsRequired?.map((p: string) => (
                     <span
                       key={p}
-                      className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/[0.04] text-slate-400 border border-white/[0.06]"
+                      className="text-[11px] font-mono px-2 py-0.5 rounded bg-white/[0.04] text-slate-400 border border-white/[0.06]"
                     >
                       {p}
                     </span>
@@ -175,7 +177,7 @@ export const IntegrationsCatalog: React.FC<IntegrationsCatalogProps> = ({
 
               {/* Action */}
               <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between text-xs">
-                <span className="text-[11px] text-slate-500">
+                <span className="text-[11px] text-slate-400">
                   {item.lastTestedAt ? `Last recorded test ${new Date(item.lastTestedAt).toLocaleDateString()}` : 'Never tested'}
                 </span>
 
@@ -223,7 +225,7 @@ export const IntegrationsCatalog: React.FC<IntegrationsCatalogProps> = ({
       {/* Register Connector Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div
+          <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Register Enterprise Connector" tabIndex={-1}
             className="w-full max-w-lg bg-[#0E121C] border border-white/[0.12] rounded-2xl p-6 shadow-2xl space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
@@ -232,13 +234,13 @@ export const IntegrationsCatalog: React.FC<IntegrationsCatalogProps> = ({
                 <h3 className="text-base font-semibold text-white tracking-tight">Register Enterprise Connector</h3>
                 <p className="text-xs text-slate-400 mt-0.5">Custom REST API or Model Context Protocol (MCP) gateway</p>
               </div>
-              <button onClick={() => setShowAddModal(false)} className="text-slate-500 hover:text-white">✕</button>
+              <button aria-label="Close" onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-white">✕</button>
             </div>
 
             <form onSubmit={handleCreateConnector} className="space-y-4">
               <div>
                 <label className="text-xs font-medium text-slate-300 block mb-1">Connector Name</label>
-                <input
+                <input aria-label="Connector Name"
                   type="text"
                   required
                   value={name}
@@ -251,7 +253,7 @@ export const IntegrationsCatalog: React.FC<IntegrationsCatalogProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-slate-300 block mb-1">Category</label>
-                  <select
+                  <select aria-label="Category"
                     value={category}
                     onChange={(e: any) => setCategory(e.target.value)}
                     className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-white/20"
@@ -266,7 +268,7 @@ export const IntegrationsCatalog: React.FC<IntegrationsCatalogProps> = ({
 
                 <div>
                   <label className="text-xs font-medium text-slate-300 block mb-1">Authentication Scheme</label>
-                  <select
+                  <select aria-label="Authentication Scheme"
                     value={authType}
                     onChange={(e: any) => setAuthType(e.target.value)}
                     className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-white/20"
@@ -281,7 +283,7 @@ export const IntegrationsCatalog: React.FC<IntegrationsCatalogProps> = ({
 
               <div>
                 <label className="text-xs font-medium text-slate-300 block mb-1">Base Target URL</label>
-                <input
+                <input aria-label="Base Target URL"
                   type="url"
                   required
                   value={baseUrl}
@@ -293,7 +295,7 @@ export const IntegrationsCatalog: React.FC<IntegrationsCatalogProps> = ({
 
               <div>
                 <label className="text-xs font-medium text-slate-300 block mb-1">Description</label>
-                <textarea
+                <textarea aria-label="Description"
                   rows={2}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -304,7 +306,7 @@ export const IntegrationsCatalog: React.FC<IntegrationsCatalogProps> = ({
 
               <div>
                 <label className="text-xs font-medium text-slate-300 block mb-1">Required Permissions (Comma-Separated)</label>
-                <input
+                <input aria-label="Required Permissions (Comma-Separated)"
                   type="text"
                   value={permissionsRequired}
                   onChange={(e) => setPermissionsRequired(e.target.value)}

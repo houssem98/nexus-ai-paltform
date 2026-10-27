@@ -189,7 +189,7 @@ export default function App() {
       <div className="h-screen w-screen bg-[#080B11] flex flex-col items-center justify-center text-slate-300 gap-3 select-none">
         <Loader2 className="w-5 h-5 text-white/80 animate-spin" />
         <div className="font-medium text-xs tracking-tight text-white">Initializing Nexus AI Platform</div>
-        <p className="text-[11px] text-slate-500 font-mono">Loading tenant context & topology runtime...</p>
+        <p className="text-[11px] text-slate-400 font-mono">Loading tenant context & topology runtime...</p>
       </div>
     );
   }
@@ -197,6 +197,12 @@ export default function App() {
   return (
     <ToastProvider>
       <div className="min-h-screen bg-[#080B11] text-slate-100 flex flex-col font-sans selection:bg-white/[0.15] selection:text-white relative overflow-hidden">
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[60] focus:px-3 focus:py-2 focus:rounded-md focus:bg-white focus:text-slate-900 focus:text-sm focus:font-medium"
+        >
+          Skip to main content
+        </a>
         {/* Subtle Ambient Illumination for Glassmorphism Refraction */}
         <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
           <div className="absolute -top-40 -left-40 w-[500px] h-[500px] bg-blue-600/[0.04] rounded-full blur-[140px]" />
@@ -236,7 +242,7 @@ export default function App() {
         />
 
         {/* Dynamic Content Region */}
-        <main className="flex-1 overflow-y-auto bg-slate-950">
+        <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto bg-slate-950 focus:outline-none">
           {currentTab === 'command_center' && (
             <CommandCenter
               agents={agents}

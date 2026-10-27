@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { pressable, useDialog } from '../lib/a11y';
 import {
   Database,
   Sparkles,
@@ -28,6 +29,7 @@ export const DataFoundryStudio: React.FC = () => {
   const [selectedSampleIndex, setSelectedSampleIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const dialogRef = useDialog<HTMLDivElement>(isModalOpen, () => setIsModalOpen(false));
 
   // Annotation state
   const [userRationale, setUserRationale] = useState('');
@@ -179,7 +181,7 @@ export const DataFoundryStudio: React.FC = () => {
             <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
               Curated Datasets ({datasets.length})
             </h2>
-            <span className="text-[11px] text-slate-500 font-mono">Deduplicated</span>
+            <span className="text-[11px] text-slate-400 font-mono">Deduplicated</span>
           </div>
 
           <div className="space-y-2">
@@ -188,10 +190,10 @@ export const DataFoundryStudio: React.FC = () => {
               return (
                 <div
                   key={ds.id}
-                  onClick={() => {
+                  {...pressable(() => {
                     setSelectedDataset(ds);
                     setSelectedSampleIndex(0);
-                  }}
+                  })}
                   className={`p-4 rounded-xl border cursor-pointer transition-all ${
                     isSelected
                       ? 'border-purple-500/50 bg-purple-950/20 shadow-sm'
@@ -206,14 +208,14 @@ export const DataFoundryStudio: React.FC = () => {
                   <div className="font-semibold text-white text-sm mb-1">{ds.name}</div>
                   <div className="text-xs text-slate-400 mb-2">{ds.domain}</div>
 
-                  <div className="flex items-center justify-between border-t border-white/[0.06] pt-2 text-[11px] text-slate-500 font-mono">
+                  <div className="flex items-center justify-between border-t border-white/[0.06] pt-2 text-[11px] text-slate-400 font-mono">
                     <span>{ds.recordCount.toLocaleString()} instruction pairs</span>
-                    <button
+                    <button aria-label="Delete dataset"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleDelete(ds.id);
                       }}
-                      className="text-slate-500 hover:text-rose-400 transition"
+                      className="text-slate-400 hover:text-rose-400 transition"
                       title="Delete dataset"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -234,7 +236,7 @@ export const DataFoundryStudio: React.FC = () => {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-semibold text-white">Pairwise Human Preference Studio</span>
-                    <span className="text-[10px] font-mono text-purple-400 bg-purple-950/30 px-2 py-0.5 rounded border border-purple-500/20">
+                    <span className="text-[11px] font-mono text-purple-400 bg-purple-950/30 px-2 py-0.5 rounded border border-purple-500/20">
                       Sample #{selectedSampleIndex + 1} of {selectedDataset.samples.length}
                     </span>
                   </div>
@@ -263,13 +265,13 @@ export const DataFoundryStudio: React.FC = () => {
 
               {/* Input Prompt Box */}
               <div className="p-4 rounded-xl bg-black/40 border border-white/[0.08] space-y-1.5">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-slate-400">
                   Instruction / Adversarial Prompt
                 </span>
                 <p className="text-xs font-mono text-slate-200 leading-relaxed">{currentSample.prompt}</p>
                 <div className="flex flex-wrap gap-1.5 pt-1">
                   {currentSample.tags?.map((t: string, i: number) => (
-                    <span key={i} className="text-[10px] text-slate-400 font-mono">
+                    <span key={i} className="text-[11px] text-slate-400 font-mono">
                       #{t}
                     </span>
                   ))}
@@ -290,7 +292,7 @@ export const DataFoundryStudio: React.FC = () => {
                     <div className="flex items-center justify-between border-b border-white/[0.06] pb-2">
                       <span className="font-semibold text-xs text-white">Candidate A</span>
                       {currentSample.preference === 'A' && (
-                        <span className="text-[10px] font-mono text-emerald-400 flex items-center gap-1">
+                        <span className="text-[11px] font-mono text-emerald-400 flex items-center gap-1">
                           <CheckCircle2 className="w-3 h-3" /> Preferred
                         </span>
                       )}
@@ -324,7 +326,7 @@ export const DataFoundryStudio: React.FC = () => {
                     <div className="flex items-center justify-between border-b border-white/[0.06] pb-2">
                       <span className="font-semibold text-xs text-white">Candidate B</span>
                       {currentSample.preference === 'B' && (
-                        <span className="text-[10px] font-mono text-emerald-400 flex items-center gap-1">
+                        <span className="text-[11px] font-mono text-emerald-400 flex items-center gap-1">
                           <CheckCircle2 className="w-3 h-3" /> Preferred
                         </span>
                       )}
@@ -358,26 +360,32 @@ export const DataFoundryStudio: React.FC = () => {
                   </div>
                   <div className="flex items-center gap-1">
                     {[1, 2, 3, 4, 5].map((star) => (
-                      <Star
+                      <button
                         key={star}
+                        type="button"
+                        aria-label={`Rate ${star} of 5`}
+                        aria-pressed={star <= starRating}
                         onClick={() => setStarRating(star)}
-                        className={`w-3.5 h-3.5 cursor-pointer ${
-                          star <= starRating ? 'text-amber-400 fill-amber-400' : 'text-slate-600'
-                        }`}
-                      />
+                      >
+                        <Star
+                          className={`w-3.5 h-3.5 ${
+                            star <= starRating ? 'text-amber-400 fill-amber-400' : 'text-slate-500'
+                          }`}
+                        />
+                      </button>
                     ))}
                   </div>
                 </div>
 
-                <textarea
+                <textarea aria-label="Annotator rationale"
                   rows={2}
                   placeholder={currentSample.rationale || 'Explain why one candidate conforms better to grounding rules or mathematical invariants...'}
                   value={userRationale}
                   onChange={(e) => setUserRationale(e.target.value)}
-                  className="w-full px-3 py-2 bg-[#090D16] border border-white/[0.08] rounded-lg text-xs text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-purple-500"
+                  className="w-full px-3 py-2 bg-[#090D16] border border-white/[0.08] rounded-lg text-xs text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-purple-500"
                 />
 
-                <div className="flex items-center justify-between text-[11px] text-slate-500">
+                <div className="flex items-center justify-between text-[11px] text-slate-400">
                   <span>Reinforcement Learning from Human Feedback (RLHF DPO Target)</span>
                   <button
                     onClick={() => handleVote(currentSample.preference || 'A')}
@@ -389,7 +397,7 @@ export const DataFoundryStudio: React.FC = () => {
               </div>
             </>
           ) : (
-            <div className="h-64 flex items-center justify-center text-slate-500 text-xs font-mono">
+            <div className="h-64 flex items-center justify-center text-slate-400 text-xs font-mono">
               Select or generate a synthetic dataset to begin pairwise RLHF annotation
             </div>
           )}
@@ -399,13 +407,13 @@ export const DataFoundryStudio: React.FC = () => {
       {/* Synthetic Generation Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-150">
-          <div className="w-full max-w-lg bg-[#0A0D14] border border-white/[0.12] rounded-2xl shadow-2xl overflow-hidden p-6 text-slate-100 space-y-5">
+          <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Generate Synthetic Instruction Dataset" tabIndex={-1} className="w-full max-w-lg bg-[#0A0D14] border border-white/[0.12] rounded-2xl shadow-2xl overflow-hidden p-6 text-slate-100 space-y-5">
             <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
               <div>
                 <h3 className="text-base font-semibold text-white">Generate Synthetic Instruction Dataset</h3>
                 <p className="text-xs text-slate-400">Scale Data Engine automated prompt generation</p>
               </div>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white text-xs">
+              <button aria-label="Close" onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white text-xs">
                 ✕
               </button>
             </div>
@@ -413,7 +421,7 @@ export const DataFoundryStudio: React.FC = () => {
             <form onSubmit={handleGenerate} className="space-y-4 text-xs">
               <div>
                 <label className="block text-slate-300 mb-1 font-medium">Dataset Name</label>
-                <input
+                <input aria-label="Dataset Name"
                   type="text"
                   required
                   placeholder="e.g. Enterprise Legal Compliance & Indemnity Pairs"
@@ -426,7 +434,7 @@ export const DataFoundryStudio: React.FC = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-300 mb-1 font-medium">Target Domain</label>
-                  <select
+                  <select aria-label="Target Domain"
                     value={domain}
                     onChange={(e) => setDomain(e.target.value)}
                     className="w-full px-3 py-2 bg-[#0E121C] border border-white/[0.08] rounded-lg text-slate-100 focus:outline-none focus:border-purple-500"
@@ -440,7 +448,7 @@ export const DataFoundryStudio: React.FC = () => {
 
                 <div>
                   <label className="block text-slate-300 mb-1 font-medium">Generation Method</label>
-                  <select
+                  <select aria-label="Generation Method"
                     value={method}
                     onChange={(e) => setMethod(e.target.value as any)}
                     className="w-full px-3 py-2 bg-[#0E121C] border border-white/[0.08] rounded-lg text-slate-100 focus:outline-none focus:border-purple-500"
@@ -454,7 +462,7 @@ export const DataFoundryStudio: React.FC = () => {
 
               <div>
                 <label className="block text-slate-300 mb-1 font-medium">Seed Instruction Prompt</label>
-                <textarea
+                <textarea aria-label="Seed Instruction Prompt"
                   rows={2}
                   value={seedPrompt}
                   onChange={(e) => setSeedPrompt(e.target.value)}
@@ -464,7 +472,7 @@ export const DataFoundryStudio: React.FC = () => {
 
               <div>
                 <label className="block text-slate-300 mb-1 font-medium">Number of Synthetic Pairs</label>
-                <input
+                <input aria-label="Number of Synthetic Pairs"
                   type="number"
                   value={count}
                   onChange={(e) => setCount(e.target.value)}

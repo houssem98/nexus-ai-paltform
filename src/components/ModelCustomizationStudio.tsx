@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { pressable, useDialog } from '../lib/a11y';
 import {
   Cpu,
   Layers,
@@ -46,6 +47,7 @@ export const ModelCustomizationStudio: React.FC<ModelCustomizationStudioProps> =
   const [selectedJob, setSelectedJob] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const dialogRef = useDialog<HTMLDivElement>(isModalOpen, () => setIsModalOpen(false));
   const [deployingId, setDeployingId] = useState<string | null>(null);
 
   // New job form state
@@ -168,7 +170,7 @@ export const ModelCustomizationStudio: React.FC<ModelCustomizationStudioProps> =
           <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
             Supported Foundation Base Models ({catalog.length})
           </h2>
-          <span className="text-xs text-slate-500 font-mono">Frontier Weights & Open Architectures</span>
+          <span className="text-xs text-slate-400 font-mono">Frontier Weights & Open Architectures</span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
@@ -190,7 +192,7 @@ export const ModelCustomizationStudio: React.FC<ModelCustomizationStudioProps> =
                 <p className="text-[11px] text-slate-400 line-clamp-2 mb-3">{m.recommendedFor}</p>
               </div>
 
-              <div className="border-t border-white/[0.06] pt-2.5 flex items-center justify-between text-[10px]">
+              <div className="border-t border-white/[0.06] pt-2.5 flex items-center justify-between text-[11px]">
                 <span className="font-mono text-slate-400">{m.contextWindow}</span>
                 <span className="text-slate-400 uppercase font-mono">{m.supportedMethods.join(' / ')}</span>
               </div>
@@ -229,18 +231,18 @@ export const ModelCustomizationStudio: React.FC<ModelCustomizationStudioProps> =
                   return (
                     <tr
                       key={job.id}
-                      onClick={() => setSelectedJob(job)}
+                      {...pressable(() => setSelectedJob(job))}
                       className={`cursor-pointer transition-colors ${
                         isSelected ? 'bg-indigo-950/20' : 'hover:bg-white/[0.02]'
                       }`}
                     >
                       <td className="py-3 font-medium text-white max-w-[200px] truncate">
                         <div>{job.name}</div>
-                        <div className="text-[10px] text-slate-500 font-mono">{job.datasetName}</div>
+                        <div className="text-[11px] text-slate-400 font-mono">{job.datasetName}</div>
                       </td>
                       <td className="py-3 font-mono text-slate-300 text-[11px]">{job.baseModel}</td>
                       <td className="py-3">
-                        <span className="uppercase text-[10px] font-mono font-medium text-indigo-400 bg-indigo-950/30 px-2 py-0.5 rounded border border-indigo-500/20">
+                        <span className="uppercase text-[11px] font-mono font-medium text-indigo-400 bg-indigo-950/30 px-2 py-0.5 rounded border border-indigo-500/20">
                           {job.method}
                         </span>
                       </td>
@@ -270,7 +272,7 @@ export const ModelCustomizationStudio: React.FC<ModelCustomizationStudioProps> =
                       <td className="py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
                           {job.deployedEndpoint ? (
-                            <span className="text-[10px] font-mono text-emerald-400 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+                            <span className="text-[11px] font-mono text-emerald-400 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
                               Active Ingress
                             </span>
                           ) : (
@@ -282,10 +284,10 @@ export const ModelCustomizationStudio: React.FC<ModelCustomizationStudioProps> =
                               {deployingId === job.id ? 'Deploying...' : 'Deploy to Gateway'}
                             </button>
                           )}
-                          <button
+                          <button aria-label="Delete adapter checkpoint"
                             onClick={() => handleDelete(job.id)}
                             title="Delete adapter checkpoint"
-                            className="p-1 rounded text-slate-500 hover:text-rose-400 transition"
+                            className="p-1 rounded text-slate-400 hover:text-rose-400 transition"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -343,7 +345,7 @@ export const ModelCustomizationStudio: React.FC<ModelCustomizationStudioProps> =
                           if (active && payload && payload.length) {
                             return (
                               <div className="rounded-lg border border-white/[0.1] bg-[#090D16]/95 backdrop-blur-md p-2.5 text-xs space-y-1 shadow-xl">
-                                <div className="font-mono text-slate-400 text-[10px]">Step {payload[0].payload.step}</div>
+                                <div className="font-mono text-slate-400 text-[11px]">Step {payload[0].payload.step}</div>
                                 <div className="text-indigo-400 font-mono">
                                   Train Loss: {payload[0].value}
                                 </div>
@@ -379,13 +381,13 @@ export const ModelCustomizationStudio: React.FC<ModelCustomizationStudioProps> =
 
                 <div className="grid grid-cols-2 gap-2 text-xs pt-1">
                   <div className="p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.05]">
-                    <span className="text-[10px] text-slate-500 block">Initial Loss</span>
+                    <span className="text-[11px] text-slate-400 block">Initial Loss</span>
                     <span className="font-mono text-slate-300 font-semibold text-sm">
                       {selectedJob.metrics?.initialLoss || '2.14'}
                     </span>
                   </div>
                   <div className="p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.05]">
-                    <span className="text-[10px] text-slate-500 block">Converged Loss</span>
+                    <span className="text-[11px] text-slate-400 block">Converged Loss</span>
                     <span className="font-mono text-emerald-400 font-semibold text-sm">
                       {selectedJob.metrics?.finalLoss || '0.38'}
                     </span>
@@ -393,14 +395,14 @@ export const ModelCustomizationStudio: React.FC<ModelCustomizationStudioProps> =
                 </div>
               </div>
             ) : (
-              <div className="h-52 flex items-center justify-center text-slate-500 text-xs font-mono">
+              <div className="h-52 flex items-center justify-center text-slate-400 text-xs font-mono">
                 Select an adapter from the ledger to inspect loss convergence
               </div>
             )}
           </div>
 
           <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between text-xs">
-            <span className="text-slate-500 font-mono text-[11px]">NVIDIA H100 GPU Cluster</span>
+            <span className="text-slate-400 font-mono text-[11px]">NVIDIA H100 GPU Cluster</span>
             {onNavigateToDeployments && (
               <button
                 onClick={onNavigateToDeployments}
@@ -417,13 +419,13 @@ export const ModelCustomizationStudio: React.FC<ModelCustomizationStudioProps> =
       {/* Launch Job Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-150">
-          <div className="w-full max-w-xl bg-[#0A0D14] border border-white/[0.12] rounded-2xl shadow-2xl overflow-hidden p-6 text-slate-100 space-y-5">
+          <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Launch Scale Model Customization Job" tabIndex={-1} className="w-full max-w-xl bg-[#0A0D14] border border-white/[0.12] rounded-2xl shadow-2xl overflow-hidden p-6 text-slate-100 space-y-5">
             <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
               <div>
                 <h3 className="text-base font-semibold text-white">Launch Scale Model Customization Job</h3>
                 <p className="text-xs text-slate-400">Configure PEFT, LoRA rank, and alignment hyperparameters</p>
               </div>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white text-xs">
+              <button aria-label="Close" onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white text-xs">
                 ✕
               </button>
             </div>
@@ -431,20 +433,20 @@ export const ModelCustomizationStudio: React.FC<ModelCustomizationStudioProps> =
             <form onSubmit={handleCreateJob} className="space-y-4 text-xs">
               <div>
                 <label className="block text-slate-300 mb-1 font-medium">Adapter Name</label>
-                <input
+                <input aria-label="Adapter Name"
                   type="text"
                   required
                   placeholder="e.g. Financial AP Forensic LoRA Adapter"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 bg-[#0E121C] border border-white/[0.08] rounded-lg text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500"
+                  className="w-full px-3 py-2 bg-[#0E121C] border border-white/[0.08] rounded-lg text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-300 mb-1 font-medium">Base Foundation Model</label>
-                  <select
+                  <select aria-label="Base Foundation Model"
                     value={baseModel}
                     onChange={(e) => setBaseModel(e.target.value)}
                     className="w-full px-3 py-2 bg-[#0E121C] border border-white/[0.08] rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
@@ -459,7 +461,7 @@ export const ModelCustomizationStudio: React.FC<ModelCustomizationStudioProps> =
 
                 <div>
                   <label className="block text-slate-300 mb-1 font-medium">Optimization Method</label>
-                  <select
+                  <select aria-label="Optimization Method"
                     value={method}
                     onChange={(e) => setMethod(e.target.value as any)}
                     className="w-full px-3 py-2 bg-[#0E121C] border border-white/[0.08] rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
@@ -474,7 +476,7 @@ export const ModelCustomizationStudio: React.FC<ModelCustomizationStudioProps> =
 
               <div>
                 <label className="block text-slate-300 mb-1 font-medium">Training Dataset</label>
-                <input
+                <input aria-label="Training Dataset"
                   type="text"
                   value={datasetName}
                   onChange={(e) => setDatasetName(e.target.value)}
@@ -485,7 +487,7 @@ export const ModelCustomizationStudio: React.FC<ModelCustomizationStudioProps> =
               <div className="grid grid-cols-4 gap-2">
                 <div>
                   <label className="block text-slate-400 text-[11px] mb-1">LoRA Rank (r)</label>
-                  <input
+                  <input aria-label="LoRA Rank (r)"
                     type="number"
                     value={loraRank}
                     onChange={(e) => setLoraRank(e.target.value)}
@@ -494,7 +496,7 @@ export const ModelCustomizationStudio: React.FC<ModelCustomizationStudioProps> =
                 </div>
                 <div>
                   <label className="block text-slate-400 text-[11px] mb-1">LoRA Alpha</label>
-                  <input
+                  <input aria-label="LoRA Alpha"
                     type="number"
                     value={loraAlpha}
                     onChange={(e) => setLoraAlpha(e.target.value)}
@@ -503,7 +505,7 @@ export const ModelCustomizationStudio: React.FC<ModelCustomizationStudioProps> =
                 </div>
                 <div>
                   <label className="block text-slate-400 text-[11px] mb-1">Epochs</label>
-                  <input
+                  <input aria-label="Epochs"
                     type="number"
                     value={epochs}
                     onChange={(e) => setEpochs(e.target.value)}
@@ -512,7 +514,7 @@ export const ModelCustomizationStudio: React.FC<ModelCustomizationStudioProps> =
                 </div>
                 <div>
                   <label className="block text-slate-400 text-[11px] mb-1">Batch Size</label>
-                  <input
+                  <input aria-label="Batch Size"
                     type="number"
                     value={batchSize}
                     onChange={(e) => setBatchSize(e.target.value)}

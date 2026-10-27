@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useDialog } from '../lib/a11y';
 import { Play, CheckCircle2, Loader2, Plus, TestTube2, Target, BarChart2, Download } from 'lucide-react';
 import { api } from '../lib/api';
 import { useToast } from '../context/ToastContext';
@@ -19,6 +20,7 @@ export const EvaluationLab: React.FC<EvaluationLabProps> = ({ evaluations, onRef
 
   // New Dataset modal
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const dialogRef = useDialog<HTMLDivElement>(showCreateModal, () => setShowCreateModal(false));
   const [newSuiteName, setNewSuiteName] = useState('');
   const [newSuiteDesc, setNewSuiteDesc] = useState('');
   const [scenarioInput, setScenarioInput] = useState('Vendor rate card discrepancy check');
@@ -147,7 +149,7 @@ export const EvaluationLab: React.FC<EvaluationLabProps> = ({ evaluations, onRef
 
       {/* Dataset Selector Ribbon */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
-        <span className="text-slate-500 font-mono text-[11px] uppercase mr-1">Datasets:</span>
+        <span className="text-slate-400 font-mono text-[11px] uppercase mr-1">Datasets:</span>
         {datasets.map((ds: any) => {
           const isSelected = ds.id === selectedDataset?.id;
           return (
@@ -162,7 +164,7 @@ export const EvaluationLab: React.FC<EvaluationLabProps> = ({ evaluations, onRef
             >
               <TestTube2 className="w-3 h-3" />
               <span>{ds.name}</span>
-              <span className="font-mono text-[10px] text-slate-500">({ds.cases?.length || 0})</span>
+              <span className="font-mono text-[11px] text-slate-400">({ds.cases?.length || 0})</span>
             </button>
           );
         })}
@@ -174,25 +176,25 @@ export const EvaluationLab: React.FC<EvaluationLabProps> = ({ evaluations, onRef
           <div className="p-5">
             <div className="text-xs text-slate-400 mb-1">Ground Truth Accuracy</div>
             <div className="text-2xl font-semibold text-emerald-400 font-mono tabular-nums">{latestRun.accuracyRate}%</div>
-            <div className="text-[11px] text-slate-500 mt-1">{latestRun.passedCases} of {latestRun.totalCases} cases passed</div>
+            <div className="text-[11px] text-slate-400 mt-1">{latestRun.passedCases} of {latestRun.totalCases} cases passed</div>
           </div>
 
           <div className="p-5">
             <div className="text-xs text-slate-400 mb-1">Schema Validity</div>
             <div className="text-2xl font-semibold text-white font-mono tabular-nums">{latestRun.schemaValidityRate}%</div>
-            <div className="text-[11px] text-slate-500 mt-1">Copied, not checked</div>
+            <div className="text-[11px] text-slate-400 mt-1">Copied, not checked</div>
           </div>
 
           <div className="p-5">
             <div className="text-xs text-slate-400 mb-1">Average Latency</div>
             <div className="text-2xl font-semibold text-white font-mono tabular-nums">{latestRun.avgLatencyMs}ms</div>
-            <div className="text-[11px] text-slate-500 mt-1">Fixed figure, not measured</div>
+            <div className="text-[11px] text-slate-400 mt-1">Fixed figure, not measured</div>
           </div>
 
           <div className="p-5">
             <div className="text-xs text-slate-400 mb-1">Total Benchmark Cost</div>
             <div className="text-2xl font-semibold text-white font-mono tabular-nums">${latestRun.totalCostUsd?.toFixed(4)}</div>
-            <div className="text-[11px] text-slate-500 mt-1">Fixed figure; no tokens were billed</div>
+            <div className="text-[11px] text-slate-400 mt-1">Fixed figure; no tokens were billed</div>
           </div>
         </div>
       )}
@@ -249,7 +251,7 @@ export const EvaluationLab: React.FC<EvaluationLabProps> = ({ evaluations, onRef
       {/* Create Benchmark Suite Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div
+          <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Create Benchmark Dataset" tabIndex={-1}
             className="w-full max-w-lg bg-[#0E121C] border border-white/[0.12] rounded-2xl p-6 shadow-2xl space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
@@ -258,13 +260,13 @@ export const EvaluationLab: React.FC<EvaluationLabProps> = ({ evaluations, onRef
                 <h3 className="text-base font-semibold text-white tracking-tight">Create Benchmark Dataset</h3>
                 <p className="text-xs text-slate-400 mt-0.5">Define deterministic ground-truth evaluation suites</p>
               </div>
-              <button onClick={() => setShowCreateModal(false)} className="text-slate-500 hover:text-white">✕</button>
+              <button aria-label="Close" onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-white">✕</button>
             </div>
 
             <form onSubmit={handleCreateDataset} className="space-y-4">
               <div>
                 <label className="text-xs font-medium text-slate-300 block mb-1">Dataset Name</label>
-                <input
+                <input aria-label="Dataset Name"
                   type="text"
                   required
                   value={newSuiteName}
@@ -276,7 +278,7 @@ export const EvaluationLab: React.FC<EvaluationLabProps> = ({ evaluations, onRef
 
               <div>
                 <label className="text-xs font-medium text-slate-300 block mb-1">Description</label>
-                <input
+                <input aria-label="Description"
                   type="text"
                   value={newSuiteDesc}
                   onChange={(e) => setNewSuiteDesc(e.target.value)}
@@ -293,7 +295,7 @@ export const EvaluationLab: React.FC<EvaluationLabProps> = ({ evaluations, onRef
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-[11px] text-slate-400 block mb-1">Vendor Name</label>
-                    <input
+                    <input aria-label="Vendor Name"
                       type="text"
                       value={vendorInput}
                       onChange={(e) => setVendorInput(e.target.value)}
@@ -303,7 +305,7 @@ export const EvaluationLab: React.FC<EvaluationLabProps> = ({ evaluations, onRef
 
                   <div>
                     <label className="text-[11px] text-slate-400 block mb-1">Amount ($)</label>
-                    <input
+                    <input aria-label="Amount ($)"
                       type="number"
                       value={amountInput}
                       onChange={(e) => setAmountInput(Number(e.target.value))}
@@ -314,7 +316,7 @@ export const EvaluationLab: React.FC<EvaluationLabProps> = ({ evaluations, onRef
 
                 <div>
                   <label className="text-[11px] text-slate-400 block mb-1">Ground Truth Keywords (Comma-Separated)</label>
-                  <input
+                  <input aria-label="Ground Truth Keywords (Comma-Separated)"
                     type="text"
                     value={keywordsInput}
                     onChange={(e) => setKeywordsInput(e.target.value)}

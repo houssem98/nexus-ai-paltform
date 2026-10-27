@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { pressable } from '../lib/a11y';
 import {
   ShieldAlert,
   ShieldCheck,
@@ -158,25 +159,25 @@ export const RedTeamingSecurityStudio: React.FC = () => {
         <div className="p-5">
           <div className="text-xs text-slate-400 mb-1">Safety Benchmark Score</div>
           <div className="text-2xl font-semibold text-emerald-400 font-mono tabular-nums">98.6%</div>
-          <div className="text-[11px] text-slate-500 mt-1">Scale SEAL Standard Benchmark</div>
+          <div className="text-[11px] text-slate-400 mt-1">Scale SEAL Standard Benchmark</div>
         </div>
 
         <div className="p-5">
           <div className="text-xs text-slate-400 mb-1">Jailbreak Interceptions</div>
           <div className="text-2xl font-semibold text-white font-mono tabular-nums">298 / 305</div>
-          <div className="text-[11px] text-slate-500 mt-1">Adversarial probes neutralized</div>
+          <div className="text-[11px] text-slate-400 mt-1">Adversarial probes neutralized</div>
         </div>
 
         <div className="p-5">
           <div className="text-xs text-slate-400 mb-1">PII Masking Integrity</div>
           <div className="text-2xl font-semibold text-white font-mono tabular-nums">100.0%</div>
-          <div className="text-[11px] text-slate-500 mt-1">Zero exfiltration breaches</div>
+          <div className="text-[11px] text-slate-400 mt-1">Zero exfiltration breaches</div>
         </div>
 
         <div className="p-5">
           <div className="text-xs text-slate-400 mb-1">Refusal Latency Penalty</div>
           <div className="text-2xl font-semibold text-white font-mono tabular-nums">22ms</div>
-          <div className="text-[11px] text-slate-500 mt-1">Sub-token boundary screening</div>
+          <div className="text-[11px] text-slate-400 mt-1">Sub-token boundary screening</div>
         </div>
       </div>
 
@@ -190,7 +191,7 @@ export const RedTeamingSecurityStudio: React.FC = () => {
                 Active Dynamic Guardrails Invariants
               </h2>
             </div>
-            <span className="text-xs text-slate-500 font-mono">Real-Time Refusal Engine Configuration</span>
+            <span className="text-xs text-slate-400 font-mono">Real-Time Refusal Engine Configuration</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
@@ -199,7 +200,7 @@ export const RedTeamingSecurityStudio: React.FC = () => {
                 <span className="font-semibold text-slate-200 block">PII Anonymization</span>
                 <span className="text-[11px] text-slate-400">Mask SSN, IBAN, and keys</span>
               </div>
-              <input
+              <input aria-label="PII Anonymization"
                 type="checkbox"
                 checked={guardrails.piiMasking}
                 onChange={(e) => handleUpdateGuardrail('piiMasking', e.target.checked)}
@@ -212,7 +213,7 @@ export const RedTeamingSecurityStudio: React.FC = () => {
                 <span className="font-semibold text-slate-200 block">CBRN Hazard Filter</span>
                 <span className="text-[11px] text-slate-400">Block hazardous bio/cyber</span>
               </div>
-              <input
+              <input aria-label="CBRN Hazard Filter"
                 type="checkbox"
                 checked={guardrails.blockCbrnHazards}
                 onChange={(e) => handleUpdateGuardrail('blockCbrnHazards', e.target.checked)}
@@ -225,7 +226,7 @@ export const RedTeamingSecurityStudio: React.FC = () => {
                 <span className="font-semibold text-slate-200 block">Semantic Firewall</span>
                 <span className="text-[11px] text-slate-400">Intent vector alignment</span>
               </div>
-              <input
+              <input aria-label="Semantic Firewall"
                 type="checkbox"
                 checked={guardrails.semanticFirewallEnabled}
                 onChange={(e) => handleUpdateGuardrail('semanticFirewallEnabled', e.target.checked)}
@@ -238,7 +239,7 @@ export const RedTeamingSecurityStudio: React.FC = () => {
                 <span className="font-semibold text-slate-200">Jailbreak Sensitivity</span>
                 <span className="font-mono text-rose-400">{guardrails.jailbreakSensitivity}</span>
               </div>
-              <input
+              <input aria-label="Jailbreak Sensitivity"
                 type="range"
                 min="0.5"
                 max="0.99"
@@ -262,12 +263,12 @@ export const RedTeamingSecurityStudio: React.FC = () => {
                 <Terminal className="w-4 h-4 text-rose-400" />
                 <h2 className="text-sm font-semibold text-white">Interactive Adversarial Probe Sandbox</h2>
               </div>
-              <span className="text-xs text-slate-500 font-mono">Live Guardrail Evaluation</span>
+              <span className="text-xs text-slate-400 font-mono">Live Guardrail Evaluation</span>
             </div>
 
             {/* Attack Presets */}
             <div className="space-y-1">
-              <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500">
+              <span className="text-[11px] font-mono uppercase tracking-wider text-slate-400">
                 Preset Adversarial Payloads
               </span>
               <div className="flex flex-wrap gap-1.5">
@@ -285,10 +286,10 @@ export const RedTeamingSecurityStudio: React.FC = () => {
 
             {/* Prompt Input */}
             <div className="space-y-1 pt-1">
-              <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500">
+              <span className="text-[11px] font-mono uppercase tracking-wider text-slate-400">
                 Adversarial Attack Input
               </span>
-              <textarea
+              <textarea aria-label="Adversarial Attack Input"
                 rows={3}
                 value={testPrompt}
                 onChange={(e) => setTestPrompt(e.target.value)}
@@ -360,7 +361,7 @@ export const RedTeamingSecurityStudio: React.FC = () => {
               {runs.map((r) => (
                 <div
                   key={r.id}
-                  onClick={() => setSelectedRun(r)}
+                  {...pressable(() => setSelectedRun(r))}
                   className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
                     selectedRun?.id === r.id
                       ? 'border-rose-500/50 bg-rose-950/20'
@@ -373,7 +374,7 @@ export const RedTeamingSecurityStudio: React.FC = () => {
                   </div>
                   <div className="text-[11px] text-slate-400 mb-2">{r.attackVector}</div>
 
-                  <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono border-t border-white/[0.04] pt-2">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono border-t border-white/[0.04] pt-2">
                     <span>
                       {r.probesBlocked} / {r.probesTotal} Probes Blocked
                     </span>

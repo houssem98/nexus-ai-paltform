@@ -368,10 +368,10 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
       {/* 1. Left: Node Palette & Pipeline Selector */}
       <div className="w-64 border-r border-white/[0.07] bg-[#0A0D14]/80 backdrop-blur-md p-4 flex flex-col shrink-0">
         <div className="mb-4">
-          <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">
+          <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">
             Active Workflow Pipeline
           </label>
-          <select
+          <select aria-label="Active Workflow Pipeline"
             value={selectedWorkflowId}
             onChange={(e) => {
               const wf = workflows.find((w) => w.id === e.target.value);
@@ -389,7 +389,7 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
 
         {/* Node Library */}
         <div className="flex-1 overflow-y-auto space-y-1">
-          <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">
+          <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
             Available Node Types
           </div>
           {nodePalette.map((p) => {
@@ -404,7 +404,7 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                   <Icon className="w-3.5 h-3.5 text-slate-400 group-hover:text-white transition-colors" />
                   <span className="font-normal text-slate-300 group-hover:text-white">{p.label}</span>
                 </div>
-                <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-slate-300" />
+                <Plus className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-300" />
               </button>
             );
           })}
@@ -462,7 +462,7 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
       >
         {/* Floating Canvas Toolbar */}
         <div className="absolute top-4 left-4 z-10 flex items-center gap-1 bg-[#0D111A]/90 backdrop-blur-md border border-white/[0.08] rounded-lg p-1 shadow-lg text-xs">
-          <button
+          <button aria-label="Zoom In"
             onClick={() => setZoom((z) => Math.min(z + 0.15, 2))}
             className="p-1 rounded text-slate-400 hover:text-white hover:bg-white/[0.06] transition"
             title="Zoom In"
@@ -470,14 +470,14 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
             <ZoomIn className="w-3.5 h-3.5" />
           </button>
           <span className="text-[11px] font-mono text-slate-400 px-1.5 tabular-nums">{Math.round(zoom * 100)}%</span>
-          <button
+          <button aria-label="Zoom Out"
             onClick={() => setZoom((z) => Math.max(z - 0.15, 0.4))}
             className="p-1 rounded text-slate-400 hover:text-white hover:bg-white/[0.06] transition"
             title="Zoom Out"
           >
             <ZoomOut className="w-3.5 h-3.5" />
           </button>
-          <button
+          <button aria-label="Reset View"
             onClick={() => {
               setZoom(1);
               setPan({ x: 0, y: 0 });
@@ -488,7 +488,7 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
             <Maximize2 className="w-3.5 h-3.5" />
           </button>
           <div className="w-px h-3.5 bg-white/[0.1] mx-0.5" />
-          <button
+          <button aria-label="Auto-Layout Nodes"
             onClick={handleAutoLayout}
             className="p-1 rounded text-slate-400 hover:text-blue-400 hover:bg-white/[0.06] transition flex items-center gap-1"
             title="Auto-Layout Nodes"
@@ -502,7 +502,7 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           {connectingSourceNodeId && (
             <div className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium shadow-lg flex items-center gap-2">
               <span>Select target node port to link</span>
-              <button onClick={() => setConnectingSourceNodeId(null)}>
+              <button aria-label="Cancel linking" onClick={() => setConnectingSourceNodeId(null)}>
                 <X className="w-3 h-3" />
               </button>
             </div>
@@ -541,7 +541,7 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                 {validationResult.valid ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
                 {validationResult.valid ? 'Topology Valid' : 'Topology Errors'}
               </span>
-              <button onClick={() => setValidationResult(null)}>
+              <button aria-label="Dismiss validation result" onClick={() => setValidationResult(null)}>
                 <X className="w-3 h-3 text-slate-400 hover:text-white" />
               </button>
             </div>
@@ -627,15 +627,15 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
               >
                 {/* Micro Header */}
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[9px] font-mono uppercase tracking-widest text-slate-500 font-semibold">
+                  <span className="text-[11px] font-mono uppercase tracking-widest text-slate-400 font-semibold">
                     {node.type}
                   </span>
-                  <button
+                  <button aria-label="Delete node"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleDeleteNode(node.id);
                     }}
-                    className="text-slate-600 hover:text-slate-300 transition"
+                    className="text-slate-500 hover:text-slate-300 transition"
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>
@@ -645,7 +645,7 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                 <div className="text-xs font-semibold text-slate-100 mb-1 leading-snug">{node.label}</div>
 
                 {/* Node Subtext */}
-                <div className="text-[10px] text-slate-400 font-normal truncate">
+                <div className="text-[11px] text-slate-400 font-normal truncate">
                   {node.type === 'agent' && 'Gemini 4 Argon · High Thinking'}
                   {node.type === 'condition' && `${node.config.field ?? '?'} ${node.config.operator ?? '>'} ${node.config.value ?? '?'}`}
                   {node.type === 'approval' && `Role: ${node.config.requiredRole ?? 'workspace_admin'}`}
@@ -689,7 +689,7 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
             {selectedNode ? 'Node Properties' : 'Pipeline Test Payload'}
           </h3>
           {selectedNode && (
-            <button onClick={() => setSelectedNodeId(null)} className="text-slate-500 hover:text-slate-300">
+            <button aria-label="Close node properties" onClick={() => setSelectedNodeId(null)} className="text-slate-400 hover:text-slate-300">
               <X className="w-3.5 h-3.5" />
             </button>
           )}
@@ -699,7 +699,7 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           <div className="space-y-4 text-xs">
             <div>
               <label className="text-[11px] font-medium text-slate-400 block mb-1">Node Title</label>
-              <input
+              <input aria-label="Node Title"
                 type="text"
                 value={selectedNode.label}
                 onChange={(e) => {
@@ -729,7 +729,7 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                     </option>
                   ))}
                 </select>
-                <p className="text-[11px] text-slate-500 mt-1.5">Model: Gemini 4 Argon (High Thinking)</p>
+                <p className="text-[11px] text-slate-400 mt-1.5">Model: Gemini 4 Argon (High Thinking)</p>
               </div>
             )}
 
@@ -804,7 +804,7 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
               </div>
             )}
 
-            <div className="pt-2 border-t border-white/[0.07] text-[10px] text-slate-500 font-mono">
+            <div className="pt-2 border-t border-white/[0.07] text-[11px] text-slate-400 font-mono">
               ID: {selectedNode.id}
             </div>
           </div>
@@ -814,7 +814,7 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
               <label className="text-[11px] font-medium text-slate-400 block mb-1">
                 Input Payload (JSON)
               </label>
-              <textarea
+              <textarea aria-label="Input Payload (JSON)"
                 rows={6}
                 value={testPayload}
                 onChange={(e) => setTestPayload(e.target.value)}
@@ -828,7 +828,7 @@ export const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                 <div className="flex items-center justify-between text-xs font-medium">
                   <span className="text-slate-300">Run Output</span>
                   <span
-                    className={`font-mono text-[10px] ${
+                    className={`font-mono text-[11px] ${
                       executionOutput.status === 'completed'
                         ? 'text-emerald-400'
                         : executionOutput.status === 'waiting_approval'

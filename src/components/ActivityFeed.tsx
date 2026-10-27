@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { pressable } from '../lib/a11y';
 import {
   Activity,
   Bot,
@@ -302,7 +303,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
         <div className="flex items-center gap-2.5">
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-semibold text-white tracking-tight">Live Activity Feed</h2>
-            <span className="text-[11px] font-mono text-slate-500">Updates on refresh</span>
+            <span className="text-[11px] font-mono text-slate-400">Updates on refresh</span>
           </div>
           <span className="text-white/20" aria-hidden="true">·</span>
           <span className="text-xs text-slate-400 font-mono tabular-nums">latest {auditLogs.length} events</span>
@@ -320,11 +321,11 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
               <Sparkles className="w-3.5 h-3.5 text-blue-400" />
               <span>Simulate</span>
               <SimulatedBadge label="Demo" />
-              <ChevronDown className="w-3 h-3 text-slate-500" />
+              <ChevronDown className="w-3 h-3 text-slate-400" />
             </button>
 
             <div className="absolute right-0 top-full mt-1.5 w-44 bg-[#0F131D]/95 backdrop-blur-md border border-white/[0.1] rounded-lg shadow-xl p-1 z-30 hidden group-hover:block text-xs animate-in fade-in zoom-in-95 duration-100">
-              <div className="px-2 py-1 text-[10px] uppercase font-semibold text-slate-500 tracking-wider">
+              <div className="px-2 py-1 text-[11px] uppercase font-semibold text-slate-400 tracking-wider">
                 Sample Event
               </div>
               <button
@@ -353,7 +354,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
 
           {/* Refresh Action */}
           {onRefresh && (
-            <button
+            <button aria-label="Refresh ledger feed"
               onClick={onRefresh}
               className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-slate-400 hover:text-slate-200 border border-white/[0.08] transition"
               title="Refresh ledger feed"
@@ -385,7 +386,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
                 : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
             }`}
           >
-            All Events <span className="font-mono text-[11px] text-slate-500 ml-1">({categoryCounts.all})</span>
+            All Events <span className="font-mono text-[11px] text-slate-400 ml-1">({categoryCounts.all})</span>
           </button>
 
           <button
@@ -398,7 +399,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
           >
             <Bot className="w-3 h-3 text-blue-400" />
             <span>Agent Decisions</span>
-            <span className="font-mono text-[11px] text-slate-500">({categoryCounts.agent})</span>
+            <span className="font-mono text-[11px] text-slate-400">({categoryCounts.agent})</span>
           </button>
 
           <button
@@ -411,7 +412,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
           >
             <User className="w-3 h-3 text-emerald-400" />
             <span>User Actions</span>
-            <span className="font-mono text-[11px] text-slate-500">({categoryCounts.user})</span>
+            <span className="font-mono text-[11px] text-slate-400">({categoryCounts.user})</span>
           </button>
 
           <button
@@ -424,19 +425,19 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
           >
             <Cpu className="w-3 h-3 text-cyan-400" />
             <span>System & Infra</span>
-            <span className="font-mono text-[11px] text-slate-500">({categoryCounts.system})</span>
+            <span className="font-mono text-[11px] text-slate-400">({categoryCounts.system})</span>
           </button>
         </div>
 
         {/* Quick Query Filter */}
         <div className="relative w-full md:w-56 shrink-0">
-          <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5 pointer-events-none" />
-          <input
+          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5 pointer-events-none" />
+          <input aria-label="Filter live activity"
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Filter live activity..."
-            className="w-full pl-8 pr-3 py-1 bg-white/[0.03] border border-white/[0.06] rounded-md text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-white/[0.2] transition"
+            className="w-full pl-8 pr-3 py-1 bg-white/[0.03] border border-white/[0.06] rounded-md text-xs text-slate-200 placeholder:text-slate-400 focus:outline-none focus:border-white/[0.2] transition"
           />
         </div>
       </div>
@@ -444,7 +445,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
       {/* Activity Stream Entries */}
       <div className="divide-y divide-white/[0.04] overflow-y-auto max-h-[380px]">
         {displayedList.length === 0 ? (
-          <div className="p-8 text-center text-xs text-slate-500 space-y-1">
+          <div className="p-8 text-center text-xs text-slate-400 space-y-1">
             <Radio className="w-5 h-5 text-slate-600 mx-auto" />
             <div className="text-slate-400 font-medium">No activity matching criteria</div>
             <p className="text-[11px]">Clear search or select another category filter</p>
@@ -485,7 +486,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
             return (
               <div
                 key={log.id}
-                onClick={() => setExpandedId(isExpanded ? null : log.id)}
+                {...pressable(() => setExpandedId(isExpanded ? null : log.id))}
                 className={`p-3.5 hover:bg-white/[0.02] transition cursor-pointer select-none group ${
                   isExpanded ? 'bg-white/[0.03]' : ''
                 }`}
@@ -534,7 +535,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
                   <div className="flex items-center gap-2 shrink-0 pt-0.5">
                     <span
                       title={new Date(log.timestamp).toLocaleString()}
-                      className="text-[11px] font-mono text-slate-500 tabular-nums"
+                      className="text-[11px] font-mono text-slate-400 tabular-nums"
                     >
                       {formatRelativeTime(log.timestamp)}
                     </span>
@@ -551,17 +552,17 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
                   <div className="mt-3 pt-3 border-t border-white/[0.06] text-xs space-y-2.5 animate-in fade-in duration-100">
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono">
                       <div className="p-2 rounded bg-black/30 border border-white/[0.04]">
-                        <span className="text-slate-500 block text-[10px] uppercase">Resource Type</span>
+                        <span className="text-slate-400 block text-[11px] uppercase">Resource Type</span>
                         <span className="text-slate-300 font-medium capitalize">{log.resourceType}</span>
                       </div>
 
                       <div className="p-2 rounded bg-black/30 border border-white/[0.04]">
-                        <span className="text-slate-500 block text-[10px] uppercase">Resource ID</span>
+                        <span className="text-slate-400 block text-[11px] uppercase">Resource ID</span>
                         <div className="flex items-center justify-between text-slate-300 truncate">
                           <span className="truncate">{log.resourceId}</span>
                           <button
                             onClick={(e) => handleCopyId(log.resourceId, e)}
-                            className="text-slate-500 hover:text-slate-300 ml-1 shrink-0"
+                            className="text-slate-400 hover:text-slate-300 ml-1 shrink-0"
                             title="Copy Resource ID"
                           >
                             {copiedId === log.resourceId ? (
@@ -574,12 +575,12 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
                       </div>
 
                       <div className="p-2 rounded bg-black/30 border border-white/[0.04]">
-                        <span className="text-slate-500 block text-[10px] uppercase">Origin IP</span>
+                        <span className="text-slate-400 block text-[11px] uppercase">Origin IP</span>
                         <span className="text-slate-300 tabular-nums">{log.ipAddress || 'Internal Mesh'}</span>
                       </div>
 
                       <div className="p-2 rounded bg-black/30 border border-white/[0.04]">
-                        <span className="text-slate-500 block text-[10px] uppercase">Exact UTC</span>
+                        <span className="text-slate-400 block text-[11px] uppercase">Exact UTC</span>
                         <span className="text-slate-300 tabular-nums">
                           {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                         </span>
@@ -588,7 +589,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
 
                     {/* Navigation Context Action */}
                     <div className="flex items-center justify-between pt-1">
-                      <span className="text-[11px] text-slate-500 font-mono">Ledger ID: {log.id}</span>
+                      <span className="text-[11px] text-slate-400 font-mono">Ledger ID: {log.id}</span>
 
                       <div className="flex items-center gap-2">
                         {log.resourceType === 'agent' && (
@@ -640,7 +641,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
       </div>
 
       {/* Footer Status Bar */}
-      <div className="p-2.5 px-4 bg-[#0A0D14]/80 border-t border-white/[0.08] flex items-center justify-between text-[11px] text-slate-500 font-mono">
+      <div className="p-2.5 px-4 bg-[#0A0D14]/80 border-t border-white/[0.08] flex items-center justify-between text-[11px] text-slate-400 font-mono">
         <div className="flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
           <span>Stored audit log (editable JSON)</span>

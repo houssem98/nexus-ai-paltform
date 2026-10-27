@@ -92,12 +92,12 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
         >
           <Layers className="w-3 h-3 text-blue-400/80" />
           <span className="truncate max-w-[120px] sm:max-w-[160px]">{currentWorkspace?.name || 'Operations'}</span>
-          <ChevronDown className="w-3 h-3 text-slate-500" />
+          <ChevronDown className="w-3 h-3 text-slate-400" />
         </button>
 
         {wsDropdownOpen && (
           <div className="absolute left-0 top-full mt-1.5 w-60 bg-[#0F131D]/95 backdrop-blur-md border border-white/[0.1] rounded-lg shadow-xl p-1 z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
-            <div className="px-2 py-1 text-[10px] uppercase font-semibold text-slate-500 tracking-wider">
+            <div className="px-2 py-1 text-[11px] uppercase font-semibold text-slate-400 tracking-wider">
               Switch Workspace
             </div>
             {availableWorkspaces.map((w) => (
@@ -114,7 +114,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
                 }`}
               >
                 <span className="truncate">{w.name}</span>
-                <span className="text-[10px] text-slate-500 font-mono">{w.department}</span>
+                <span className="text-[11px] text-slate-400 font-mono">{w.department}</span>
               </button>
             ))}
           </div>
@@ -145,12 +145,12 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
                 className="flex items-center gap-1 text-white font-medium py-0.5 px-1 rounded hover:bg-white/[0.04] transition focus:outline-none"
               >
                 <span className="truncate max-w-[140px] sm:max-w-[220px]">{activeEntityName}</span>
-                <ChevronDown className="w-3 h-3 text-slate-500" />
+                <ChevronDown className="w-3 h-3 text-slate-400" />
               </button>
 
               {entityDropdownOpen && (
                 <div className="absolute left-0 top-full mt-1.5 w-64 bg-[#0F131D]/95 backdrop-blur-md border border-white/[0.1] rounded-lg shadow-xl p-1 z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
-                  <div className="px-2 py-1 text-[10px] uppercase font-semibold text-slate-500 tracking-wider">
+                  <div className="px-2 py-1 text-[11px] uppercase font-semibold text-slate-400 tracking-wider">
                     Switch Active Pipeline / Item
                   </div>
                   {availableEntities.map((ent) => (

@@ -95,7 +95,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {sections.map((section, sIdx) => (
           <div key={sIdx} className="space-y-1">
             {!collapsed && (
-              <div className="px-2.5 mb-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+              <div className="px-2.5 mb-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
                 {section.heading}
               </div>
             )}
@@ -116,7 +116,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 >
                   <Icon
                     className={`w-4 h-4 shrink-0 transition-colors ${
-                      isActive ? 'text-blue-400' : 'text-slate-500 group-hover:text-slate-300'
+                      isActive ? 'text-blue-400' : 'text-slate-400 group-hover:text-slate-300'
                     }`}
                   />
 
@@ -124,7 +124,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <div className="flex items-center justify-between flex-1 truncate">
                       <span className="truncate">{item.label}</span>
                       {item.count && item.count > 0 ? (
-                        <span className="text-[10px] font-mono font-semibold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300">
+                        <span className="text-[11px] font-mono font-semibold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300">
                           {item.count}
                         </span>
                       ) : null}
@@ -144,7 +144,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <BrainCircuit className="w-3.5 h-3.5 text-blue-400" />
             <span>High Thinking</span>
           </div>
-          <p className="text-[10px] text-slate-500 leading-normal">
+          <p className="text-[11px] text-slate-400 leading-normal">
             Workflow agent steps always request high thinking, whatever each agent's setting.
           </p>
         </div>
@@ -154,7 +154,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="p-2 border-t border-white/[0.07] flex justify-end">
         <button
           onClick={onToggleCollapse}
-          className="p-1 rounded text-slate-500 hover:text-slate-300 hover:bg-white/[0.04] transition"
+          className="p-1 rounded text-slate-400 hover:text-slate-300 hover:bg-white/[0.04] transition"
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}

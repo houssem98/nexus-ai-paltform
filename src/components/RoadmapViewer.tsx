@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { pressable, useDialog } from '../lib/a11y';
 import {
   X,
   CheckCircle2,
@@ -72,6 +73,7 @@ export const RoadmapViewer: React.FC<RoadmapViewerProps> = ({ isOpen, onClose, o
     }
   }, [isOpen]);
 
+  const dialogRef = useDialog<HTMLDivElement>(isOpen, onClose);
   if (!isOpen) return null;
 
   const toggleTrack = (id: string) => {
@@ -110,7 +112,7 @@ export const RoadmapViewer: React.FC<RoadmapViewerProps> = ({ isOpen, onClose, o
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/75 backdrop-blur-md animate-in fade-in duration-200">
-      <div
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Scale GenAI Platform · World-Class Enterprise Roadmap" tabIndex={-1}
         className="w-full max-w-5xl max-h-[90vh] bg-[#0A0D14] border border-white/[0.12] rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100"
         onClick={(e) => e.stopPropagation()}
       >
@@ -139,7 +141,7 @@ export const RoadmapViewer: React.FC<RoadmapViewerProps> = ({ isOpen, onClose, o
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
               <span>{loading ? 'Loading...' : 'Refresh'}</span>
             </button>
-            <button
+            <button aria-label="Close"
               onClick={onClose}
               className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06] transition"
             >
@@ -156,7 +158,7 @@ export const RoadmapViewer: React.FC<RoadmapViewerProps> = ({ isOpen, onClose, o
               <div className="text-xl font-semibold text-emerald-400 font-mono mt-0.5">
                 6 / 6 Strategic Tracks
               </div>
-              <div className="text-[10px] text-slate-500 mt-0.5">Full Scale GenAI capability matrix</div>
+              <div className="text-[11px] text-slate-400 mt-0.5">Full Scale GenAI capability matrix</div>
             </div>
 
             <div className="p-4">
@@ -164,7 +166,7 @@ export const RoadmapViewer: React.FC<RoadmapViewerProps> = ({ isOpen, onClose, o
               <div className="text-xl font-semibold text-white font-mono mt-0.5">
                 PEFT / LoRA / DPO
               </div>
-              <div className="text-[10px] text-slate-500 mt-0.5">Gemini, Llama, Mistral, Claude, DeepSeek</div>
+              <div className="text-[11px] text-slate-400 mt-0.5">Gemini, Llama, Mistral, Claude, DeepSeek</div>
             </div>
 
             <div className="p-4">
@@ -172,7 +174,7 @@ export const RoadmapViewer: React.FC<RoadmapViewerProps> = ({ isOpen, onClose, o
               <div className="text-xl font-semibold text-white font-mono mt-0.5 tabular-nums">
                 98.6% Safety Score
               </div>
-              <div className="text-[10px] text-slate-500 mt-0.5">
+              <div className="text-[11px] text-slate-400 mt-0.5">
                 Pairwise RLHF & automated red-team
               </div>
             </div>
@@ -182,7 +184,7 @@ export const RoadmapViewer: React.FC<RoadmapViewerProps> = ({ isOpen, onClose, o
               <div className="text-xl font-semibold text-emerald-400 font-mono mt-0.5 tabular-nums">
                 18 / 18 Invariants Met
               </div>
-              <div className="text-[10px] text-slate-500 mt-0.5">
+              <div className="text-[11px] text-slate-400 mt-0.5">
                 Zero-trust sovereign isolation verified
               </div>
             </div>
@@ -223,7 +225,7 @@ export const RoadmapViewer: React.FC<RoadmapViewerProps> = ({ isOpen, onClose, o
               Acceptance Criteria ({roadmapData?.acceptanceCriteria?.length || 18})
             </button>
           </div>
-          <span className="text-[11px] font-mono text-slate-500">
+          <span className="text-[11px] font-mono text-slate-400">
             Authoritative Live State Verified
           </span>
         </div>
@@ -242,7 +244,7 @@ export const RoadmapViewer: React.FC<RoadmapViewerProps> = ({ isOpen, onClose, o
                   >
                     {/* Track Header */}
                     <div
-                      onClick={() => toggleTrack(track.id)}
+                      {...pressable(() => toggleTrack(track.id))}
                       className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer hover:bg-white/[0.02] select-none"
                     >
                       <div className="flex items-start gap-3">
@@ -256,7 +258,7 @@ export const RoadmapViewer: React.FC<RoadmapViewerProps> = ({ isOpen, onClose, o
                             </span>
                             <span aria-hidden="true" className="text-slate-600">·</span>
                             <h3 className="text-sm font-semibold text-white">{track.title}</h3>
-                            <span className="text-[10px] font-mono font-medium text-emerald-400 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+                            <span className="text-[11px] font-mono font-medium text-emerald-400 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
                               Production Ready
                             </span>
                           </div>
@@ -283,7 +285,7 @@ export const RoadmapViewer: React.FC<RoadmapViewerProps> = ({ isOpen, onClose, o
                     {/* Milestones Accordion */}
                     {isExpanded && (
                       <div className="border-t border-white/[0.06] p-4 bg-black/20 space-y-2">
-                        <div className="text-[11px] font-mono uppercase tracking-wider text-slate-500 mb-2">
+                        <div className="text-[11px] font-mono uppercase tracking-wider text-slate-400 mb-2">
                           Track Architecture Capabilities & Invariants
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
@@ -318,7 +320,7 @@ export const RoadmapViewer: React.FC<RoadmapViewerProps> = ({ isOpen, onClose, o
                     className="rounded-xl border border-white/[0.08] bg-[#0E121C]/70 backdrop-blur-md overflow-hidden transition"
                   >
                     <div
-                      onClick={() => togglePhase(phase.phase)}
+                      {...pressable(() => togglePhase(phase.phase))}
                       className="p-4 flex items-center justify-between cursor-pointer hover:bg-white/[0.02] select-none"
                     >
                       <div className="flex items-center gap-3">
@@ -327,12 +329,12 @@ export const RoadmapViewer: React.FC<RoadmapViewerProps> = ({ isOpen, onClose, o
                         </span>
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="text-[11px] font-mono text-slate-500 uppercase tracking-wider font-semibold">
+                            <span className="text-[11px] font-mono text-slate-400 uppercase tracking-wider font-semibold">
                               Phase {phase.phase}
                             </span>
                             <span aria-hidden="true" className="text-slate-600">·</span>
                             <h3 className="text-sm font-semibold text-white">{phase.name}</h3>
-                            <span className="text-[10px] font-mono font-medium text-emerald-400 px-1.5 py-0.2 rounded bg-emerald-500/10 border border-emerald-500/20">
+                            <span className="text-[11px] font-mono font-medium text-emerald-400 px-1.5 py-0.2 rounded bg-emerald-500/10 border border-emerald-500/20">
                               Complete
                             </span>
                           </div>
@@ -393,13 +395,13 @@ export const RoadmapViewer: React.FC<RoadmapViewerProps> = ({ isOpen, onClose, o
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                     <div>
                       <div className="font-medium text-white flex items-center gap-2">
-                        <span className="font-mono text-slate-500">#{crit.id}</span>
+                        <span className="font-mono text-slate-400">#{crit.id}</span>
                         <span>{crit.text}</span>
                       </div>
                       <div className="text-[11px] text-slate-400 mt-1 font-mono">{crit.evidence}</div>
                     </div>
                   </div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 shrink-0">
+                  <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 shrink-0">
                     PASSED
                   </span>
                 </div>
@@ -409,7 +411,7 @@ export const RoadmapViewer: React.FC<RoadmapViewerProps> = ({ isOpen, onClose, o
         </div>
 
         {/* Footer Audit Bar */}
-        <div className="p-4 border-t border-white/[0.08] bg-[#080B11] flex items-center justify-between text-xs text-slate-500">
+        <div className="p-4 border-t border-white/[0.08] bg-[#080B11] flex items-center justify-between text-xs text-slate-400">
           <div className="flex items-center gap-2">
             <span className="font-mono">Nexus Scale GenAI v4.8 Enterprise Release</span>
             <span aria-hidden="true">·</span>
