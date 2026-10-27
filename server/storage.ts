@@ -172,6 +172,7 @@ export interface ToolIntegration {
   permissionsRequired: string[];
   lastTestedAt?: string;
   config: Record<string, any>;
+  simulated?: boolean;
 }
 
 export interface EvaluationCase {
@@ -275,6 +276,7 @@ export interface ApprovalRequest {
   decidedBy?: string;
   decidedAt?: string;
   createdAt: string;
+  simulated?: boolean;
 }
 
 export interface FineTuningJob {
@@ -1494,9 +1496,18 @@ function upgrade(state: PlatformState) {
   // L1 T11: the invoice workflow refuses an amount that is not a non-negative number (S30).
   const invoice = state.workflows.find((w) => w.id === 'wf_invoice_reconciliation');
   if (invoice && !invoice.inputSchema) invoice.inputSchema = { amount: 'nonnegative' };
-  // L1 T14: the seed's audit records describe events that never happened, so they are flagged like every invented one.
-  const invented = new Set(getInitialSeedData().auditLogs.map((l) => l.id));
-  for (const l of state.auditLogs) if (invented.has(l.id) && !l.simulated) l.simulated = true;
+  // L1 T14, T17: the seed's history never happened (runs, an approval, an evaluation run, a deployment, connectors and
+  // audit records), so it is flagged like every invented record: listed and run only in demo mode, never exported.
+  // Agents, workflows, documents and datasets are templates and stay as they are.
+  const seed = getInitialSeedData();
+  const history: [{ id: string; simulated?: boolean }[], { id: string }[]][] = [
+    [state.executions, seed.executions], [state.approvals, seed.approvals], [state.evaluations.runs, seed.evaluations.runs],
+    [state.deployments, seed.deployments], [state.integrations, seed.integrations], [state.auditLogs, seed.auditLogs],
+  ];
+  for (const [stored, seeded] of history) {
+    const invented = new Set(seeded.map((r) => r.id));
+    for (const r of stored) if (invented.has(r.id) && !r.simulated) r.simulated = true;
+  }
 }
 
 export class StorageManager {

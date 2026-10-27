@@ -168,6 +168,16 @@ test("the seed's invented audit records are flagged simulated and absent from ex
   assert.ok(booted.filter((l: { id: string }) => l.id.startsWith('aud_10')).every((l: { simulated?: boolean }) => l.simulated === true));
 });
 
+// L1 T17: so is the rest of the seed's history, in a stored store as in a new one.
+test("a store written before L1 T17 has the seed's history flagged at the next boot", () => {
+  const history = (s: any) => [s.executions, s.approvals, s.evaluations.runs, s.deployments, s.integrations, s.auditLogs];
+  const old = oldStore((s) => { for (const list of history(s)) for (const r of list) delete r.simulated; });
+  const out = old.boot();
+  assert.equal(out.status, 0, out.stderr);
+  const unflagged = history(JSON.parse(out.stdout.trim().split('\n').pop()!)).flat().filter((r: any) => !r.simulated).map((r: any) => r.id);
+  assert.deepEqual(unflagged, []);
+});
+
 // L1 T14: a record that carries the plain key beside its hash counts as leaked too.
 test('a legacy deployment with both apiKey and its hash no longer accepts that key', () => {
   const leakedHash = createHash('sha256').update('nx_live_leaked').digest('hex');

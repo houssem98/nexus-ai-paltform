@@ -553,7 +553,9 @@ app.get('/api/v1/analytics/trends', (req: Request, res: Response) => {
 // ==================== EXECUTIONS ====================
 app.get('/api/v1/executions', (req: Request, res: Response) => {
   const state = db.getState();
-  const executions = state.executions.filter((e) => e.orgId === res.locals.orgId);
+  // Simulated runs, the seed's invented ones among them (L1 T17), are listed only in demo mode.
+  const demo = settingsOf(state, res.locals.orgId).demoMode;
+  const executions = state.executions.filter((e) => e.orgId === res.locals.orgId && (demo || !e.simulated));
   res.json({ executions });
 });
 
@@ -787,7 +789,9 @@ app.post('/api/v1/knowledge/:id/reindex', (req: Request, res: Response) => {
 // ==================== INTEGRATIONS ====================
 app.get('/api/v1/integrations', (req: Request, res: Response) => {
   const state = db.getState();
-  res.json({ integrations: state.integrations.filter((i) => i.orgId === res.locals.orgId) });
+  // The seed's invented connectors, which no one registered or tested, are listed only in demo mode (L1 T17).
+  const demo = settingsOf(state, res.locals.orgId).demoMode;
+  res.json({ integrations: state.integrations.filter((i) => i.orgId === res.locals.orgId && (demo || !i.simulated)) });
 });
 
 app.post('/api/v1/integrations/:id/test', demoOnly, (req: Request, res: Response) => {
@@ -1294,7 +1298,9 @@ app.post('/api/v1/audit-events/simulate', demoOnly, (req: Request, res: Response
 
 app.get('/api/v1/approvals', (req: Request, res: Response) => {
   const state = db.getState();
-  res.json({ approvals: state.approvals.filter((a) => a.orgId === res.locals.orgId) });
+  // The seed's invented approval is listed only in demo mode (L1 T17).
+  const demo = settingsOf(state, res.locals.orgId).demoMode;
+  res.json({ approvals: state.approvals.filter((a) => a.orgId === res.locals.orgId && (demo || !a.simulated)) });
 });
 
 // Audit log export endpoint (CSV or JSON)

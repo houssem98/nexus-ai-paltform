@@ -202,7 +202,9 @@ test('deployment runs say when they are simulated, and test-invoke reports real 
   assert.equal((await execute()).simulated, true);
 
   demo(false);
-  const invoked = (await call('POST', '/api/v1/deployments/dep_prod_fin_reconciliation/test-invoke', { amount: 100 })).body;
+  // The seed deployment is invented history and runs only in demo mode since L1 T17, so a real one is published.
+  const published = (await call('POST', '/api/v1/deployments', { workflowId: 'wf_invoice_reconciliation' })).body.deployment;
+  const invoked = (await call('POST', `/api/v1/deployments/${published.id}/test-invoke`, { amount: 100 })).body;
   assert.deepEqual({ status: invoked.status, success: invoked.success, durationMs: invoked.durationMs }, { status: 'failed', success: false, durationMs: undefined });
 });
 
@@ -288,4 +290,34 @@ test('no screen or document repeats a retired claim', () => {
 test('no component but the workflow canvas calls Math.random', () => {
   const files = fs.readdirSync(new URL('../src/components/', import.meta.url));
   assert.deepEqual(files.filter((f) => f !== 'WorkflowBuilder.tsx' && read(`../src/components/${f}`).includes('Math.random')), []);
+});
+
+// L1 T17: the seed's history never happened, so it is listed only in demo mode, like every simulated record;
+// agents, workflows, documents and datasets are templates and stay.
+test('with demo mode off, no list returns a seed record of something that never happened', async () => {
+  const get = async (url: string) => (await call('GET', url)).body;
+  const listed = async () => [
+    ...(await get('/api/v1/executions')).executions, ...(await get('/api/v1/approvals')).approvals,
+    ...(await get('/api/v1/evaluations')).evaluations.runs, ...(await get('/api/v1/deployments')).deployments,
+    ...(await get('/api/v1/integrations')).integrations, ...(await get('/api/v1/audit-events')).auditLogs,
+    ...(await get('/api/v1/audit-events/export?format=json')).logs,
+  ].map((r: { id: string }) => r.id);
+  const invented = ['exec_fin_88291', 'exec_fin_88292', 'appr_88292', 'eval_run_2026_01', 'dep_prod_fin_reconciliation',
+    'custom_api_sap_erp', 'threat_intel_virustotal', 'firewall_manager', 'crm_salesforce', 'aud_101', 'aud_102', 'aud_103'];
+
+  demo(true);
+  const inDemo = await listed();
+  assert.deepEqual(invented.filter((id) => !id.startsWith('aud_') && !inDemo.includes(id)), [], 'demo mode still shows the sample history');
+
+  demo(false);
+  const outside = await listed();
+  assert.deepEqual(invented.filter((id) => outside.includes(id)), []);
+  assert.equal((await call('POST', '/api/v1/deployments/dep_prod_fin_reconciliation/test-invoke', { amount: 100 })).status, 501, 'nor runs');
+  const templates = [
+    ...(await get('/api/v1/agents')).agents, ...(await get('/api/v1/workflows')).workflows,
+    ...(await get('/api/v1/knowledge')).documents, ...(await get('/api/v1/evaluations')).evaluations.datasets,
+  ].map((r: { id: string }) => r.id);
+  for (const id of ['agent_invoice_auditor', 'wf_invoice_reconciliation', 'kb_procurement_policies', 'ds_invoice_verification']) {
+    assert.ok(templates.includes(id), `the template ${id} stays`);
+  }
 });
