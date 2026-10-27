@@ -64,13 +64,13 @@ Changes: `server/storage.ts#public mutate<T>(fn: (state: PlatformState) => T): T
 - **Event log.** Each execution has an append-only, numbered list of events: node started, node succeeded, node failed, approval requested, approval decided, cancelled, completed, failed. An event is stored before the step it reports is acknowledged, and the checkpoint moves after each node. Clients poll the execution and its events; push (server-sent events) waits for a measured need.
 - **In-process worker.** `server/worker.ts` (new) runs in the server process and claims runnable executions by setting a lease. At boot it reclaims executions whose lease expired and continues from the checkpoint. Approval decisions and cancellation become events the worker reads before starting the next node; approve resumes from the approval node (L3 T4).
 - **Side effects run once.** Every side-effecting node gets the idempotency key `executionId:nodeId`; its result is stored with the event, and a retry or a recovery reuses the stored result instead of repeating the effect.
-- **Honest limits.** Hitting the step cap ends the run failed with the reason; each node has a timeout and bounded retries with backoff; a provider error fails the node with that error.
+- **Honest limits.** Hitting the step cap, a node with no outgoing edge, or a node the run already ran ends the run failed with the reason; each node has a timeout and bounded retries with backoff; a provider error fails the node with that error.
 - **Provider adapter.** `server/provider.ts` (new) is the only code that calls the model provider. It reports usage from the provider's response metadata, and returns simulated output only in demo mode, marked `simulated: true`.
 - **Branching** moves from label substrings to the edge's own condition field (`server/storage.ts#condition?: string;`) in L3.
 
 Response shapes change here: execute stops returning the finished execution, so L2 T5 updates every consumer in `src` in the same task, starting with `src/components/WorkflowBuilder.tsx#/api/v1/workflows/${workflow.id}/execute`.
 
-**Proved by.** L2 T3 (an injected provider error fails the execution; no `simulated` with demo mode off), L2 T5 (ordered, persisted events; progress visible before completion), L2 T6 (cancel stops later nodes; a retried tool node acts once), L2 T7 (kill and restart resumes without repeating a side effect), L2 T8 (a cyclic graph ends failed at the cap).
+**Proved by.** L2 T3 (an injected provider error fails the execution; no `simulated` with demo mode off), L2 T5 (ordered, persisted events; progress visible before completion), L2 T6 (cancel stops later nodes; a retried tool node acts once), L2 T7 (kill and restart resumes without repeating a side effect), L2 T8 (a cycle, a dead end and the step cap each end the run failed).
 
 Changes: `server/worker.ts` (new), `server/provider.ts` (new), `server/engine.ts#const maxSteps = 25;`, `server.ts#const executed = await runWorkflowExecution(executionId);`, `server/storage.ts#export interface ExecutionRecord {`, `src/components/WorkflowBuilder.tsx#/api/v1/workflows/${workflow.id}/execute`
 

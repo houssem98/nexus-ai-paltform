@@ -124,6 +124,7 @@ Model spend is unbounded and needs no key. Think-and-generate, the agent test an
 Partly fixed. Since L1 T3 and T5 these routes need a signed-in builder (an operator for runs). Since L1 T11 each deployment keeps to its calls per minute, answering 429 beyond them, and bodies are capped at 1 MB. Still open: a user's or an org's model spend has no ceiling (quotas are L6 T3), and a cycle repeats agent calls up to the step cap (L2 T8).
 Evidence: `server.ts#app.post('/api/v1/ai/think-and-generate'`, `server/limits.ts#export function rateLimited(key: string, perMinute: number) {`, `server.ts#This deployment takes`, `server.ts#app.use(express.json({ limit: '1mb' }));`, `server/tenancy.test.ts#one call over the rate limit gets 429`
 Test: L1 T11: one call over the rate limit gets 429
+Test: L2 T8: a cycle ends the run failed at its first repeated node and calls its agent once
 
 ### S18 · secrets · low · confidence medium
 Error responses pass internal error messages to the client.
@@ -204,12 +205,16 @@ A run that stops early is stored as completed: at the step cap, or at a node wit
 Partly fixed in L1 T13: cancelling a completed, failed or cancelled run answers 409 and writes nothing. Still open: the engine never reads a cancellation (L2 T6), and a run stopped by the step cap or a dead end is stored completed (L2 T8).
 Evidence: `server/engine.ts#if (execution.status === 'running') {`, `server/engine.ts#const maxSteps = 25;`, `server.ts#if (found && ['completed', 'failed', 'cancelled'].includes(found.status)) {`, `server/tenancy.test.ts#cancelling a finished execution gets 409 and writes no audit record`
 Test: L1 T13: cancelling a finished execution gets 409 and writes no audit record
+Test: L2 T6: cancel mid-run stops later nodes
+Test: L2 T8: a run that reaches a node with no outgoing edge ends failed, not completed
+Test: L2 T8: a run that reaches the step cap ends failed with the reason
 
 ### S32 · audit integrity · high · confidence high
 Editing a workflow rewrites the active version's graph in place, whether published or deployed, and writes no audit record, so a live deployment silently runs the edited graph, for example one without its approval node. Deployment runs and test-invokes also write no audit record. Frozen versions are L3 T3.
 Partly fixed in L1 T13: editing a workflow writes an audit record naming the editor and whether the graph changed. Still open: the edit still rewrites the active version that live deployments run (frozen versions are L3 T3), and deployment runs and test-invokes write no audit record (L2 T12).
 Evidence: `server.ts#activeVer.nodes = nodes;`, `server.ts#action: 'WORKFLOW_UPDATED',`, `server/tenancy.test.ts#editing a workflow graph writes an audit record naming the editor`
 Test: L1 T13: editing a workflow graph writes an audit record naming the editor
+Test: L2 T12: a run started through each route writes one audit record naming its trigger
 
 ### S33 · workflow integrity · medium · confidence medium
 Agent output is merged over the workflow's trusted variables, including `input`, so a model reply such as `{"input":{"amount":1}}`, reachable by prompt injection through invoice text, changes the amount the threshold reads. Read in code, not reproduced: it needs a provider.
