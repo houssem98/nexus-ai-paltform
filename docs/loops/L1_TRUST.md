@@ -35,7 +35,7 @@ Deciding rule, fixed before T1 starts: T0 to T14 are ticked, the T1 coverage tab
 - [x] T13 Audit integrity. needs: T4. Audit reads and exports are tenant-scoped; CSV export neutralizes cells that start with `=`, `+`, `-` or `@`; only server code paths append audit records. Evidence: tests for a cross-tenant export, a formula cell, and the absence of any route that writes caller-supplied audit text. Finding tests (`docs/audit/SECURITY_FINDINGS.md`): S20: every invented audit record is flagged simulated and absent from exports; S21: an audit record names the session user and that user's email; S22: a cross-tenant audit export returns none of the other org's events; S23: a CSV cell starting with =, +, - or @ is neutralized; S31: cancelling a finished execution gets 409 and writes no audit record; S32: editing a workflow graph writes an audit record naming the editor; S34: every CSV export row parses to nine cells, whatever the input.
 - [ ] T14 Independent check. needs: T3, T4, T5, T6, T7, T10, T11, T12, T13, T16. A different model, in at least 3 independent runs, attacks identity, tenancy, keys, persistence and egress per the attack list; each finding becomes a failing test first. Evidence: findings quoted in the Journal; `npm run gate` exits 0.
 - [ ] T15 (human) Signoff. needs: T14. The human confirms no known critical issue is open or silently waived. Evidence: the signoff line in the Journal.
-- [ ] T16 Approval roles. needs: T6. Added in T11. The permission table admits only workspace and org admins to the approve route (`server/permissions.ts#'POST /api/v1/executions/:id/approve': WORKSPACE_ADMIN,`), while an approval node may name any role, and the seed SOC workflow names the operator (`server/storage.ts#config: { requiredRole: 'operator' }`): such an approval can then be decided only by the org admin. Let the node's role decide, keeping the org admin's override. Evidence: test: an approval that names the operator role is decided by an operator, and refused to a builder.
+- [x] T16 Approval roles. needs: T6. Added in T11. The permission table admits only workspace and org admins to the approve route (`server/permissions.ts#'POST /api/v1/executions/:id/approve': WORKSPACE_ADMIN,`), while an approval node may name any role, and the seed SOC workflow names the operator (`server/storage.ts#config: { requiredRole: 'operator' }`): such an approval can then be decided only by the org admin. Let the node's role decide, keeping the org admin's override. Evidence: test: an approval that names the operator role is decided by an operator, and refused to a builder.
 
 ## Journal
 
@@ -247,3 +247,17 @@ Deciding rule, fixed before T1 starts: T0 to T14 are ticked, the T1 coverage tab
   ```
 
   Direction: goal unchanged; an audit trail an institution can hand to its auditors names the real person, holds only the org's own events, and exports without letting a cell run code or forge a row. Next: T16 approval roles, then T14 independent check.
+- 2026-10-27 · L1/T16 · started T16
+- 2026-10-27 · L1/T16 · passed · gate green · commit see `git log --grep "loop(L1/T16)"` · The approve route is open to every role in the permission table (`server/permissions.ts#'POST /api/v1/executions/:id/approve': ANY,`), and the rule T6 added in the route decides: the role the approval node names, or the org admin. The new test failed first (`403 !== 200`: an operator facing an operator approval was refused by the table), then passed: a builder is refused and nothing is decided, an operator decides and is recorded, and the seed SOC containment approval still names the operator. The T5 table test now gives each role an approval naming that role, so all six roles are exercised on the approve route; its assertions are unchanged. The T6 tests (403 for another role, 409 for a second decision, the recorded decider) pass unchanged. Evidence:
+
+  ```
+  $ npm run gate
+  graph-lint: clean
+  ℹ tests 105
+  ℹ pass 105
+  ℹ fail 0
+  gate-guard: clean · HEAD..working tree
+  gate exit 0
+  ```
+
+  Direction: goal unchanged; maker-checker controls now follow the role each workflow names, as an institution configures them. Next: T14 independent check (a different model, at least 3 runs, on identity, tenancy, keys, persistence and egress).

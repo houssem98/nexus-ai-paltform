@@ -14,6 +14,8 @@ export const PERMISSIONS: Record<string, Role[]> = {
   'POST /api/v1/auth/logout': ANY,
   'POST /api/v1/auth/switch-context': ANY,
   'POST /api/v1/knowledge/search': ANY,
+  // Every role reaches the approve route; the role the approval node names decides (L1 T6, T16).
+  'POST /api/v1/executions/:id/approve': ANY,
   'POST /api/v1/agents': BUILD,
   'PUT /api/v1/agents/:id': BUILD,
   'POST /api/v1/agents/:id/test': BUILD,
@@ -40,8 +42,6 @@ export const PERMISSIONS: Record<string, Role[]> = {
   'POST /api/v1/data-foundry/annotate': EVALUATE,
   'POST /api/v1/red-teaming/execute': EVALUATE,
   'POST /api/v1/red-teaming/test-probe': EVALUATE,
-  // Which role may decide one approval is the approval node's own rule (L1 T6); this is the outer bound.
-  'POST /api/v1/executions/:id/approve': WORKSPACE_ADMIN,
   'POST /api/v1/knowledge/reindex-all': WORKSPACE_ADMIN,
   'POST /api/v1/integrations': WORKSPACE_ADMIN,
   'DELETE /api/v1/integrations/:id': WORKSPACE_ADMIN,

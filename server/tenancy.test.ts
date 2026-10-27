@@ -432,16 +432,16 @@ test('a deployment key works only for its own deployment, and a deployment respo
 // that role and 403 where it does not. An allowed call gets a real target, made just before by org B's admin.
 const { PERMISSIONS } = await import('./permissions');
 const created = async (url: string, body: unknown, key: string) => (await made(B('POST', url, body), key)).id as string;
-const runningExecution = () => {
+const runningExecution = (requiredRole?: User['role']) => {
   const id = `exec_rbac_${Math.random().toString(36).slice(2)}`;
   db.mutate((s) => {
     s.executions.unshift({ id, orgId: 'org_b', workspaceId: 'ws_b', workflowId: 'wf', workflowName: 'wf', workflowVersion: 1, trigger: 'manual', status: 'running', input: {}, nodeExecutions: [], startedAt: new Date().toISOString() } as any);
-    s.approvals.push({ id: `apr_${id}`, orgId: 'org_b', workspaceId: 'ws_b', executionId: id, workflowId: 'wf', workflowName: 'wf', nodeId: 'n', nodeLabel: 'Approve', payload: {}, status: 'pending', createdAt: new Date().toISOString() });
+    s.approvals.push({ id: `apr_${id}`, orgId: 'org_b', workspaceId: 'ws_b', executionId: id, workflowId: 'wf', workflowName: 'wf', nodeId: 'n', nodeLabel: 'Approve', payload: {}, ...(requiredRole ? { requiredRole } : {}), status: 'pending', createdAt: new Date().toISOString() });
   });
   return id;
 };
 // [url, body] for one allowed call on a fresh target of org B.
-const target: Record<string, () => Promise<[string, unknown?]>> = {
+const target: Record<string, (role: User['role']) => Promise<[string, unknown?]>> = {
   'POST /api/v1/auth/logout': async () => ['/api/v1/auth/logout'],
   'POST /api/v1/auth/switch-context': async () => ['/api/v1/auth/switch-context', { workspaceId: 'ws_b' }],
   'POST /api/v1/knowledge/search': async () => ['/api/v1/knowledge/search', { query: 'x' }],
@@ -468,7 +468,8 @@ const target: Record<string, () => Promise<[string, unknown?]>> = {
   'PATCH /api/v1/deployments/:id/status': async () => [`/api/v1/deployments/${await created('/api/v1/deployments', {}, 'deployment')}/status`, { status: 'active' }],
   'DELETE /api/v1/deployments/:id': async () => [`/api/v1/deployments/${await created('/api/v1/deployments', {}, 'deployment')}`],
   'POST /api/v1/deployments/:id/test-invoke': async () => [`/api/v1/deployments/${await created('/api/v1/deployments', {}, 'deployment')}/test-invoke`, {}],
-  'POST /api/v1/executions/:id/approve': async () => [`/api/v1/executions/${runningExecution()}/approve`, { decision: 'approve' }],
+  // An approval that names the role under test, which is the node's rule since L1 T16.
+  'POST /api/v1/executions/:id/approve': async (role) => [`/api/v1/executions/${runningExecution(role)}/approve`, { decision: 'approve' }],
   'POST /api/v1/executions/:id/cancel': async () => [`/api/v1/executions/${runningExecution()}/cancel`],
   'POST /api/v1/audit-events/simulate': async () => ['/api/v1/audit-events/simulate', { eventType: 'user' }],
   'PATCH /api/v1/settings': async () => ['/api/v1/settings', {}],
@@ -503,7 +504,7 @@ test('a table of role by route returns 2xx or 403 as the permission table says',
       // Signing out ends the session, so that call gets a session of its own.
       if (route === 'POST /api/v1/auth/logout') cookies.delete(user.id);
       const before = JSON.stringify(db.getState());
-      const [url, body] = may ? await target[route]() : [route.split(' ')[1].replace(/:\w+/g, 'x'), {}];
+      const [url, body] = may ? await target[route](role) : [route.split(' ')[1].replace(/:\w+/g, 'x'), {}];
       const r = await as(user)(method, url, body);
       if (route === 'POST /api/v1/auth/logout') cookies.delete(user.id);
       if (!may) {
@@ -910,4 +911,16 @@ test('editing a workflow graph writes an audit record naming the editor', async 
   assert.equal((await as(users.b_builder)('PUT', `/api/v1/workflows/${wf.id}`, { nodes, edges: [{ id: 'x', source: 's', target: 'e' }] })).status, 200);
   assert.deepEqual([newest().action, newest().resourceId, newest().userId, newest().userEmail], ['WORKFLOW_UPDATED', wf.id, 'usr_b_builder', 'builder@org-b.test']);
   assert.match(newest().details, /graph/, 'it says the graph changed');
+});
+
+// L1 T16: the role an approval node names decides it, whatever the approve route's outer bound; the org admin may always.
+test('an approval that names the operator role is decided by an operator, and refused to a builder', async () => {
+  const id = await waitingForApproval('operator');
+  assert.equal((await as(users.b_builder)('POST', `/api/v1/executions/${id}/approve`, { decision: 'approve' })).status, 403);
+  assert.equal(approvalOf(id).status, 'pending');
+  assert.equal((await as(users.b_operator)('POST', `/api/v1/executions/${id}/approve`, { decision: 'approve' })).status, 200);
+  assert.deepEqual([approvalOf(id).status, approvalOf(id).decidedBy], ['approved', 'usr_b_operator']);
+  // The seed SOC workflow names the operator for its containment approval.
+  const soc = db.getState().workflows.flatMap((w) => w.versions).flatMap((v) => v.nodes).find((n) => n.label === 'SecOps Containment Approval');
+  assert.equal(soc?.config.requiredRole, 'operator');
 });
