@@ -52,12 +52,13 @@ const safe = (handler: (req: Request, res: Response) => Promise<unknown>) => (re
   handler(req, res).catch(next);
 };
 
-// What stops a run before it starts: input that breaks the workflow's own input schema, or a graph stored before
-// graphs were checked.
-function runRefusal(workflowId: string, input: unknown): [number, string] | undefined {
-  const workflow = db.getState().workflows.find((w) => w.id === workflowId);
-  const version = workflow?.versions.find((v) => v.version === workflow.activeVersion) || workflow?.versions[0];
-  if (!workflow || !version) return undefined;
+// What stops a run before it starts: a workflow that is not the org's (a fine-tuning deployment names a seed
+// workflow, L1 T14), input that breaks the workflow's own input schema, or a graph stored before graphs were checked.
+function runRefusal(orgId: string, workflowId: string, input: unknown): [number, string] | undefined {
+  const workflow = db.getState().workflows.find((w) => w.id === workflowId && w.orgId === orgId);
+  if (!workflow) return [404, 'Workflow not found'];
+  const version = workflow.versions.find((v) => v.version === workflow.activeVersion) || workflow.versions[0];
+  if (!version) return undefined;
   const wrong = workflow.inputSchema && problem(workflow.inputSchema, input);
   if (wrong) return [400, `The input does not fit this workflow: ${wrong}`];
   if (!valid('nodes', version.nodes) || !valid('edges', version.edges)) {
@@ -389,7 +390,7 @@ app.post('/api/v1/workflows/:id/execute', safe(async (req: Request, res: Respons
   if (!workflow) {
     return res.status(404).json({ error: 'Workflow not found' });
   }
-  const refused = runRefusal(workflow.id, input || { test: true });
+  const refused = runRefusal(res.locals.orgId, workflow.id, input || { test: true });
   if (refused) return res.status(refused[0]).json({ error: refused[1] });
 
   const executionId = newId('exec');
@@ -580,7 +581,8 @@ app.post('/api/v1/executions/:id/approve', safe(async (req: Request, res: Respon
 
   const execution = db.mutate(() => {
     approval.status = decision === 'approve' ? 'approved' : 'rejected';
-    approval.decisionNotes = notes || 'Authorized in Command Center';
+    // Only the reviewer's own words: a rejection was once recorded as authorized.
+    if (notes) approval.decisionNotes = notes;
     approval.decidedBy = res.locals.userId;
     approval.decidedAt = new Date().toISOString();
 
@@ -596,7 +598,7 @@ app.post('/api/v1/executions/:id/approve', safe(async (req: Request, res: Respon
       };
     } else {
       exec.status = 'failed';
-      exec.error = `Rejected by reviewer: ${notes || 'CFO review declined'}`;
+      exec.error = notes ? `Rejected by reviewer: ${notes}` : 'Rejected by reviewer.';
       exec.completedAt = new Date().toISOString();
     }
     return exec;
@@ -845,7 +847,8 @@ app.post('/api/v1/integrations', (req: Request, res: Response) => {
     action: 'INTEGRATION_CREATED',
     resourceType: 'integration',
     resourceId: newIntegration.id,
-    details: `Registered tool connector "${newIntegration.name}" with zero-trust egress validation.`,
+    // No egress check runs before a connector makes calls (L5 T8), so the record claims none.
+    details: `Registered tool connector "${newIntegration.name}".`,
     ipAddress: req.ip || '127.0.0.1',
   });
 
@@ -935,7 +938,8 @@ app.post('/api/v1/evaluations/runs', demoOnly, safe(async (req: Request, res: Re
   const { datasetId, targetType, targetId } = req.body;
   const state = db.getState();
   const datasets = state.evaluations.datasets.filter((d) => d.orgId === res.locals.orgId);
-  const dataset = datasets.find((d) => d.id === datasetId) || datasets[0];
+  // Only a request that names no dataset falls back to the org's first one; a named one must be the org's.
+  const dataset = datasetId ? datasets.find((d) => d.id === datasetId) : datasets[0];
   if (!dataset) return res.status(404).json({ error: 'Dataset not found' });
   if (!valid('cases', dataset.cases)) {
     return res.status(422).json({ error: 'This dataset has a case without an expected output or keywords; fix the dataset first.' });
@@ -1010,14 +1014,14 @@ app.post('/api/v1/deployments/:id/execute', safe(async (req: Request, res: Respo
   if (!deployment) {
     return res.status(404).json({ error: 'Deployment not found' });
   }
-  if (deployment.simulated && !settingsOf(state, deployment.orgId).demoMode) {
-    return res.status(501).json({ error: 'This deployment was made by a simulated feature and runs only in demo mode.' });
-  }
 
-  // Validate API key
+  // Validate API key, before anything about the deployment or its org is answered.
   const token = authHeader?.replace('Bearer ', '');
   if (!apiKeyMatches(token, deployment.apiKeyHash)) {
     return res.status(401).json({ error: 'Unauthorized: Invalid or missing API key' });
+  }
+  if (deployment.simulated && !settingsOf(state, deployment.orgId).demoMode) {
+    return res.status(501).json({ error: 'This deployment was made by a simulated feature and runs only in demo mode.' });
   }
   if (deployment.status !== 'active') {
     return res.status(403).json({ error: `This deployment is ${deployment.status}.` });
@@ -1027,7 +1031,7 @@ app.post('/api/v1/deployments/:id/execute', safe(async (req: Request, res: Respo
     res.setHeader('Retry-After', String(wait));
     return res.status(429).json({ error: `This deployment takes ${deployment.rateLimitPerMinute} calls a minute.` });
   }
-  const refused = runRefusal(deployment.workflowId, req.body);
+  const refused = runRefusal(deployment.orgId, deployment.workflowId, req.body);
   if (refused) return res.status(refused[0]).json({ error: refused[1] });
 
   deployment.invocationsTotal += 1;
@@ -1066,7 +1070,8 @@ app.post('/api/v1/deployments', (req: Request, res: Response) => {
   const { workflowId, name, environment, rateLimitPerMinute } = req.body;
   const state = db.getState();
   const workflows = state.workflows.filter((w) => w.orgId === res.locals.orgId);
-  const workflow = workflows.find((w) => w.id === workflowId) || workflows[0];
+  // Only a request that names no workflow falls back to the org's first one; a named one must be the org's.
+  const workflow = workflowId ? workflows.find((w) => w.id === workflowId) : workflows[0];
 
   if (!workflow) {
     return res.status(404).json({ error: 'Workflow not found' });
@@ -2171,7 +2176,10 @@ app.post('/api/v1/deployments/:id/test-invoke', safe(async (req: Request, res: R
   if (deployment.simulated && !settingsOf(state, res.locals.orgId).demoMode) {
     return res.status(501).json({ error: 'This deployment was made by a simulated feature and runs only in demo mode.' });
   }
-  const refused = runRefusal(deployment.workflowId, req.body);
+  if (deployment.status !== 'active') {
+    return res.status(403).json({ error: `This deployment is ${deployment.status}.` });
+  }
+  const refused = runRefusal(deployment.orgId, deployment.workflowId, req.body);
   if (refused) return res.status(refused[0]).json({ error: refused[1] });
 
   const executionId = newId('exec_dep_test');

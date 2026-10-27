@@ -1474,7 +1474,7 @@ function readJsonStore(file: string): PlatformState {
   for (const d of parsed.deployments) {
     if ('apiKey' in d) {
       delete d.apiKey;
-      d.apiKeyHash ??= unusableKeyHash();
+      d.apiKeyHash = unusableKeyHash();
     }
   }
   for (const i of parsed.integrations) {
@@ -1494,6 +1494,9 @@ function upgrade(state: PlatformState) {
   // L1 T11: the invoice workflow refuses an amount that is not a non-negative number (S30).
   const invoice = state.workflows.find((w) => w.id === 'wf_invoice_reconciliation');
   if (invoice && !invoice.inputSchema) invoice.inputSchema = { amount: 'nonnegative' };
+  // L1 T14: the seed's audit records describe events that never happened, so they are flagged like every invented one.
+  const invented = new Set(getInitialSeedData().auditLogs.map((l) => l.id));
+  for (const l of state.auditLogs) if (invented.has(l.id) && !l.simulated) l.simulated = true;
 }
 
 export class StorageManager {

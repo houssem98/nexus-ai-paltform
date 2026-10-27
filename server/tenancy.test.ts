@@ -924,3 +924,76 @@ test('an approval that names the operator role is decided by an operator, and re
   const soc = db.getState().workflows.flatMap((w) => w.versions).flatMap((v) => v.nodes).find((n) => n.label === 'SecOps Containment Approval');
   assert.equal(soc?.config.requiredRole, 'operator');
 });
+
+// L1 T14: findings of the independent check, each a test that failed before its fix.
+test('test-invoke on a suspended or rolled_back deployment gets 403 and writes no execution', async () => {
+  const dep = await publish();
+  for (const status of ['suspended', 'rolled_back']) {
+    assert.equal((await B('PATCH', `/api/v1/deployments/${dep.id}/status`, { status })).status, 200);
+    const runs = db.getState().executions.length;
+    assert.equal((await B('POST', `/api/v1/deployments/${dep.id}/test-invoke`, {})).status, 403, status);
+    assert.equal(db.getState().executions.length, runs, `${status}: no execution`);
+  }
+  assert.equal(db.getState().deployments.find((d) => d.id === dep.id)!.invocationsTotal, 0, 'no invocation counted');
+  assert.equal((await B('PATCH', `/api/v1/deployments/${dep.id}/status`, { status: 'active' })).status, 200);
+  assert.equal((await B('POST', `/api/v1/deployments/${dep.id}/test-invoke`, {})).status, 200, 'an active deployment still answers');
+});
+
+test("a deployment from a fine-tuning job in org B answers nothing about another org's workflow", async () => {
+  const job = await made(B('POST', '/api/v1/fine-tuning', { name: 'B tune' }), 'job');
+  const dep = (await B('POST', `/api/v1/fine-tuning/${job.id}/deploy`)).body.deployment;
+  const foreign = db.getState().workflows.find((w) => w.id === dep.workflowId);
+  assert.ok(foreign && foreign.orgId !== 'org_b' && foreign.inputSchema, 'the deployment names a workflow of another org that has an input schema');
+  const execute = (body: unknown) => fetch(`${base}/api/v1/deployments/${dep.id}/execute`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${dep.apiKey}` },
+    body: JSON.stringify(body),
+  }).then(async (r) => ({ status: r.status, body: await r.json() }));
+  const runs = db.getState().executions.length;
+  for (const body of [{}, { amount: 5 }]) {
+    for (const r of [await B('POST', `/api/v1/deployments/${dep.id}/test-invoke`, body), await execute(body)]) {
+      assert.equal(r.status, 404, JSON.stringify(body));
+      assert.doesNotMatch(JSON.stringify(r.body), /amount|input|graph/i, 'nothing about the foreign workflow');
+    }
+  }
+  assert.equal(db.getState().executions.length, runs, 'no execution was left behind');
+});
+
+test("POST /deployments and /evaluations/runs with another org's id get 404 when the caller's org has records", async () => {
+  await made(B('POST', '/api/v1/workflows', { name: 'B own' }), 'workflow');
+  await made(B('POST', '/api/v1/evaluations/datasets', { name: 'B cases' }), 'dataset');
+  const before = [db.getState().deployments.length, db.getState().evaluations.runs.length];
+  assert.equal((await B('POST', '/api/v1/deployments', { workflowId: a.workflow })).status, 404);
+  assert.equal((await B('POST', '/api/v1/evaluations/runs', { datasetId: a.dataset })).status, 404);
+  assert.deepEqual([db.getState().deployments.length, db.getState().evaluations.runs.length], before, 'nothing was published or run');
+  // Without an id, publishing still takes the caller's own first workflow.
+  assert.equal((await B('POST', '/api/v1/deployments', {})).status, 201);
+});
+
+test('a wrong key on a simulated deployment outside demo mode gets 401, not 501', async () => {
+  const dep = await publish();
+  db.mutate((s) => {
+    s.deployments.find((d) => d.id === dep.id)!.simulated = true;
+    settingsOf(s, 'org_b').demoMode = false;
+  });
+  try {
+    for (const wrong of [undefined, 'nx_live_wrong']) assert.equal((await execute(dep.id, wrong)).status, 401, `key ${wrong}`);
+    assert.equal((await execute(dep.id, dep.apiKey)).status, 501, 'the right key learns it runs only in demo mode');
+  } finally {
+    db.mutate((s) => { settingsOf(s, 'org_b').demoMode = true; });
+  }
+});
+
+test('a rejection without notes is not recorded as authorized', async () => {
+  const id = await waitingForApproval('operator');
+  assert.equal((await as(users.b_operator)('POST', `/api/v1/executions/${id}/approve`, { decision: 'reject' })).status, 200);
+  assert.equal(approvalOf(id).status, 'rejected');
+  assert.doesNotMatch(String(approvalOf(id).decisionNotes ?? ''), /authori[sz]ed/i, 'the approval');
+  assert.doesNotMatch(String(db.getState().executions.find((e) => e.id === id)!.error), /CFO/, 'the run names no reviewer who did not decide');
+});
+
+test("a connector's audit record claims no egress check, since none runs yet", async () => {
+  const integration = await made(B('POST', '/api/v1/integrations', { name: 'metadata', baseUrl: 'http://169.254.169.254/' }), 'integration');
+  assert.deepEqual([newest().action, newest().resourceId], ['INTEGRATION_CREATED', integration.id]);
+  assert.doesNotMatch(newest().details, /egress|validat|zero-trust/i);
+});

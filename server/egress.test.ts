@@ -47,6 +47,14 @@ for (const [name, url] of blocked) {
 test('egress blocks localhost through the system resolver', () =>
   assert.rejects(assertSafeEgress('http://localhost:3000/'), /Egress blocked/));
 
+// L1 T14: IPv6 forms that embed an IPv4 address, which a translator on the path may turn into that address.
+test('egress blocks IPv4-compatible, 6to4, SIIT, local-use NAT64 and site-local forms', async () => {
+  for (const host of ['[::7f00:1]', '[::a00:1]', '[2002:7f00:1::]', '[::ffff:0:7f00:1]', '[64:ff9b:1::7f00:1]', '[fec0::1]']) {
+    await assert.rejects(assertSafeEgress(`http://${host}/`, resolve), /Egress blocked/, host);
+  }
+  assert.deepEqual(await assertSafeEgress('http://[2001:4860:4860::8888]/', resolve), ['2001:4860:4860::8888'], 'a public IPv6 address');
+});
+
 test('egress allows a public host and returns the addresses it checked', async () => {
   assert.deepEqual(await assertSafeEgress('https://api.example.com/v1', resolve), ['93.184.216.34']);
   assert.deepEqual(await assertSafeEgress('http://8.8.8.8/', resolve), ['8.8.8.8']);

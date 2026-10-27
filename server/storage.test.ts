@@ -150,6 +150,43 @@ test('keys stored in plain text before L1 T7 stop working at the next boot', () 
   }
 });
 
+// L1 T14: the seed's audit records describe events that never happened.
+test("the seed's invented audit records are flagged simulated and absent from exports", async () => {
+  const seeded = db.getState().auditLogs.filter((l) => ['aud_101', 'aud_102', 'aud_103'].includes(l.id));
+  assert.equal(seeded.length, 3);
+  assert.ok(seeded.every((l) => l.simulated === true), 'every one is flagged');
+  const cookie = `${SESSION_COOKIE}=${createSession(db.getState().users[0])}`;
+  for (const format of ['json', 'csv']) {
+    const text = await (await fetch(`${base}/api/v1/audit-events/export?format=${format}`, { headers: { cookie } })).text();
+    for (const l of seeded) assert.ok(!text.includes(l.id), `${l.id} in the ${format} export`);
+  }
+  // A store written before L1 T14 holds them unflagged; the next boot flags them.
+  const old = oldStore((s) => { for (const l of s.auditLogs) delete l.simulated; });
+  const out = old.boot();
+  assert.equal(out.status, 0, out.stderr);
+  const booted = JSON.parse(out.stdout.trim().split('\n').pop()!).auditLogs;
+  assert.ok(booted.filter((l: { id: string }) => l.id.startsWith('aud_10')).every((l: { simulated?: boolean }) => l.simulated === true));
+});
+
+// L1 T14: a record that carries the plain key beside its hash counts as leaked too.
+test('a legacy deployment with both apiKey and its hash no longer accepts that key', () => {
+  const leakedHash = createHash('sha256').update('nx_live_leaked').digest('hex');
+  const old = oldStore((s) => {
+    for (const d of s.deployments) {
+      d.apiKey = 'nx_live_leaked';
+      d.apiKeyHash = leakedHash;
+    }
+  });
+  const out = old.boot();
+  assert.equal(out.status, 0, out.stderr);
+  const deployments = JSON.parse(out.stdout.trim().split('\n').pop()!).deployments;
+  assert.ok(deployments.length > 0);
+  for (const d of deployments) {
+    assert.equal(d.apiKey, undefined);
+    assert.notEqual(d.apiKeyHash, leakedHash, 'the leaked key no longer matches');
+  }
+});
+
 // L1 T10: the store is SQLite, written in transactions; a restart reads back exactly what was written.
 const asSeedAdmin = (method: string, url: string, body?: unknown) => fetch(base + url, {
   method,

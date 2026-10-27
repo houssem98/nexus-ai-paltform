@@ -18,6 +18,8 @@ L0 T4, written 2026-10-26 against commit ac0984b, from the code read for `docs/a
 
 **Added in L0 T8.** S28 to S38, and the wider S17, come from three independent checker runs (Sonnet; the maker is Opus). Each was reproduced in a temporary directory or read against the code before being added.
 
+**Added in L1 T14.** S40 to S48 come from three independent checker runs (Sonnet; the maker is Opus), one per scope of the attack list: identity and tenancy; keys and persistence; egress, approvals, evaluation, retrieval and honesty. Each was read against the code, and each failed its test before its fix. Reported and not findings: a plain key in a database row reaching the deployment list, since no code writes one and writing the database already gives everything (`server/auth.ts#export const publicDeployment = ({ apiKeyHash, ...deployment }: Deployment) => deployment;`); lost invocation counts, since nothing awaits between reading and writing the count and the write lands in the run's transaction (`server.ts#deployment.invocationsTotal += 1;`); a database whose rows outlive its list order, or a row of invalid JSON, since rows and order are written in one transaction, so only tampering makes either, and boot still stops and leaves the file untouched (`server/storage.ts#const fresh = (this.run('SELECT count(*) AS n FROM list_order', 'get') as { n: number }).n === 0;`); chunk ids that can repeat, since they are only displayed (`src/components/KnowledgeCenter.tsx#Chunk: {res.chunkId}`). Reported and owned by a later task: runs a killed process leaves pending (L2 T7); a cancel the engine never reads (S31, L2 T6); approval's invented outcome (S5, L3 T4); evaluation runs that cannot fail (L4); the constant search score (L5); fixed usage and cost (L2 T3); the unwired egress guard (S19, L5 T8); the rest of the seed's invented history (L1 T17). Awaiting the human, not decided by the loop: whether a workspace is an access boundary, since today only the org is and any role may switch to any workspace of its org (`server.ts#res.locals.workspaceId = found.session.workspaceId;`), while L1 T4's task text names the workspace too; whether the person who started a run may decide its approval, since only the role is checked (`server.ts#if (res.locals.user.role !== requiredRole && res.locals.user.role !== 'org_admin') {`) and only the bootstrapped admin can sign in today (`server/auth.ts#if (admin) admin.passwordHash = hashPassword(password);`), so forbidding it would leave every approval undecidable; whether deleting a document should remove the text that earlier runs and approvals copied from it (`server/engine.ts#currentVariables.knowledgeContext = doc?.content || '';`).
+
 ## Findings
 
 ### S1 · authentication · critical · confidence high
@@ -100,7 +102,7 @@ Test: L1 T7: a new key has 32 bytes from node:crypto randomBytes
 ### S14 · secrets · high · confidence high
 Keys are stored in plaintext in the store file, which git tracks, so every key created while the app runs lands in the working tree and can be committed.
 Fixed in L1 T7: the store holds a SHA-256 hash of each key. Keys stored in plain text before L1 T7 count as leaked and stop working at the next boot, so those deployments must be published again. Since L1 T10 git ignores the store.
-Evidence: `server/storage.ts#apiKeyHash: string;`, `server/storage.ts#d.apiKeyHash ??= unusableKeyHash();`, `server/storage.ts#this.file = path.join(dir, 'nexus.db');`, `server/tenancy.test.ts#a stored deployment holds a key hash, not the key`
+Evidence: `server/storage.ts#apiKeyHash: string;`, `server/storage.ts#d.apiKeyHash = unusableKeyHash();`, `server/storage.ts#this.file = path.join(dir, 'nexus.db');`, `server/tenancy.test.ts#a stored deployment holds a key hash, not the key`
 Test: L1 T7: a stored deployment holds a key hash, not the key
 
 ### S15 · secrets · medium · confidence medium
@@ -192,7 +194,7 @@ Test: L1 T11: a malformed dataset or graph fails its request with 4xx and the se
 ### S30 · workflow integrity · high · confidence high
 The CFO approval threshold fails open. A missing, non-numeric or negative amount compares false, so the run takes the auto-post branch; a condition whose edge labels do not contain True or False falls back to the first edge, which sends every seeded SOC alert to approval whatever its score. Reproduced: amounts `"$90,000"`, missing and -90000 completed with no approval. Branch values instead of labels are L3 T2.
 Fixed in L1 T11: a workflow may declare the input it takes, and the seed invoice workflow requires a non-negative number as its amount, so every run route refuses other input with 400 before a run exists; and a condition that compares a value that is not a number fails the run instead of choosing a branch. Branch values instead of labels remain L3 T2.
-Evidence: `server/storage.ts#inputSchema: { amount: 'nonnegative' },`, `server.ts#const refused = runRefusal(workflow.id, input || { test: true });`, `server/engine.ts#which is not a number.`, `server/tenancy.test.ts#an invoice without a numeric, non-negative amount is refused before it runs`, `server/engine.ts#if (operator === '>') conditionPassed = Number(actualVal) > Number(targetVal);`, `server/engine.ts#e.label?.toLowerCase().includes(branchLabel.toLowerCase())`
+Evidence: `server/storage.ts#inputSchema: { amount: 'nonnegative' },`, `server.ts#const refused = runRefusal(res.locals.orgId, workflow.id, input || { test: true });`, `server/engine.ts#which is not a number.`, `server/tenancy.test.ts#an invoice without a numeric, non-negative amount is refused before it runs`, `server/engine.ts#if (operator === '>') conditionPassed = Number(actualVal) > Number(targetVal);`, `server/engine.ts#e.label?.toLowerCase().includes(branchLabel.toLowerCase())`
 Test: L1 T11: an invoice without a numeric, non-negative amount is refused before it runs
 
 ### S31 · workflow integrity · medium · confidence high
@@ -248,3 +250,57 @@ Added in L1 T3, which introduced sign-in: nothing limits failed attempts, per ac
 Fixed in L1 T11 for one account: five failed sign-ins for an email within fifteen minutes lock it until the oldest is fifteen minutes old, whatever password comes next, and unknown emails count the same way. Still open: one client may try many accounts (no limit per address).
 Evidence: `server.ts#const wait = signInLocked(email);`, `server/limits.ts#const MAX_FAILURES = 5;`, `server/tenancy.test.ts#repeated failed sign-ins for one account get 429`
 Test: L1 T11: repeated failed sign-ins for one account get 429
+
+### S40 · authorization · low · confidence high
+Added in L1 T14. Test-invoke ran a suspended or rolled-back deployment and counted the call as an invocation, while the execute route has refused such a deployment since L1 T7. Any operator of the org could still run it.
+Fixed in L1 T14: test-invoke answers 403 for a deployment that is not active, before any run is written.
+Evidence: `server.ts#app.post('/api/v1/deployments/:id/test-invoke'`, `server.ts#if (deployment.status !== 'active') {`, `server/tenancy.test.ts#test-invoke on a suspended or rolled_back deployment gets 403 and writes no execution`
+Test: L1 T14: test-invoke on a suspended or rolled_back deployment gets 403 and writes no execution
+
+### S41 · tenant isolation · medium · confidence high
+Added in L1 T14. A deployment made from a fine-tuning job names the seed org's invoice workflow by id, whatever org made it, and the check before a run looked the workflow up by id alone. A run of such a deployment in another org (demo mode on) therefore answered with the seed org's input-schema errors, field by field, or its graph's state; a valid input got a 500 and left a pending execution behind.
+Fixed in L1 T14: the check looks the workflow up within the deployment's org and answers 404 before any run is written. The fine-tuning deployment itself is simulated and demo-only, and still names that workflow.
+Evidence: `server.ts#workflowId: 'wf_invoice_reconciliation',`, `server.ts#const workflow = db.getState().workflows.find((w) => w.id === workflowId && w.orgId === orgId);`, `server/tenancy.test.ts#a deployment from a fine-tuning job in org B answers nothing about another org's workflow`
+Test: L1 T14: a deployment from a fine-tuning job in org B answers nothing about another org's workflow
+
+### S42 · tenant isolation · low · confidence high
+Added in L1 T14. Publishing a deployment or starting an evaluation run with an id that is not the caller's org's silently used the org's first workflow or dataset instead, so the caller got 201 or 200 for a record it never named. The L1 T4 test expecting 404 passed only because org B had no workflow or dataset yet when it ran. No other org's data was read.
+Fixed in L1 T14: a named id must be the org's, or the answer is 404; only a request that names none falls back to the first.
+Evidence: `server.ts#const workflow = workflowId ? workflows.find((w) => w.id === workflowId) : workflows[0];`, `server.ts#const dataset = datasetId ? datasets.find((d) => d.id === datasetId) : datasets[0];`, `server/tenancy.test.ts#POST /deployments and /evaluations/runs with another org's id get 404 when the caller's org has records`
+Test: L1 T14: POST /deployments and /evaluations/runs with another org's id get 404 when the caller's org has records
+
+### S43 · authentication · low · confidence high
+Added in L1 T14. The execute route answered 501 for a simulated deployment before checking the key, so a caller without a key learned that the deployment is simulated and that its org has demo mode off.
+Fixed in L1 T14: the key is checked first; only its holder hears the deployment's state. An unknown deployment id still gets 404; ids carry random bytes.
+Evidence: `server.ts#// Validate API key, before anything about the deployment or its org is answered.`, `server/tenancy.test.ts#a wrong key on a simulated deployment outside demo mode gets 401, not 501`
+Test: L1 T14: a wrong key on a simulated deployment outside demo mode gets 401, not 501
+
+### S44 · secrets · low · confidence high
+Added in L1 T14. The import of a JSON store treats a plain key as leaked, but kept the stored hash of a record that carried both the plain key and its hash, so that key kept working. No version of the code wrote both; the import accepts files of uncertain origin.
+Fixed in L1 T14: every record that carries a plain key gets the hash of a key nobody holds.
+Evidence: `server/storage.ts#d.apiKeyHash = unusableKeyHash();`, `server/storage.test.ts#a legacy deployment with both apiKey and its hash no longer accepts that key`
+Test: L1 T14: a legacy deployment with both apiKey and its hash no longer accepts that key
+
+### S45 · audit integrity · low · confidence high
+Added in L1 T14. A decision without notes was recorded as "Authorized in Command Center", rejections included, and a rejected run's error named a CFO review, whoever decided.
+Fixed in L1 T14: an approval keeps only the reviewer's own notes, and a rejection without notes reads "Rejected by reviewer.".
+Evidence: `server.ts#if (notes) approval.decisionNotes = notes;`, `server.ts#'Rejected by reviewer.'`, `server/tenancy.test.ts#a rejection without notes is not recorded as authorized`
+Test: L1 T14: a rejection without notes is not recorded as authorized
+
+### S46 · audit integrity · low · confidence high
+Added in L1 T14. Registering a connector wrote an audit record saying it passed zero-trust egress validation, while no check runs: the guard is built and not wired (S19).
+Fixed in L1 T14: the record names the connector and claims no check.
+Evidence: `server.ts#Registered tool connector`, `server/tenancy.test.ts#a connector's audit record claims no egress check, since none runs yet`
+Test: L1 T14: a connector's audit record claims no egress check, since none runs yet
+
+### S47 · outbound calls · medium · confidence high
+Added in L1 T14. The egress guard allowed IPv6 forms that embed an IPv4 address, which a translator on the path may turn into that address: IPv4-compatible (::7f00:1), SIIT (::ffff:0:7f00:1), local-use NAT64 (64:ff9b:1::/48) and 6to4 (2002:7f00:1::); and deprecated site-local space (fec0::/10). Latent: no connector makes calls yet.
+Fixed in L1 T14: those ranges are blocked whole, and a public IPv6 address still passes.
+Evidence: `server/egress.ts#['2002::', 16]`, `server/egress.test.ts#egress blocks IPv4-compatible, 6to4, SIIT, local-use NAT64 and site-local forms`
+Test: L1 T14: egress blocks IPv4-compatible, 6to4, SIIT, local-use NAT64 and site-local forms
+
+### S48 · audit integrity · medium · confidence high
+Added in L1 T14. The seed holds three audit records of events that never happened, by named people (a promotion to production, an agent change, a connector health check), unflagged. They appeared in the seed org's log with demo mode off and in every export, although S20 says every invented record is flagged and never exported; the bootstrapped admin signs in to that org. L0 T6 named the seed's invented history open and gave it to L1 T8 and T9, which closed without it.
+Fixed in L1 T14 for audit records: they are flagged simulated in a new store and at the next boot of a stored one, so they are hidden outside demo mode and never exported. The rest of the seed's invented history is L1 T17.
+Evidence: `server/storage.ts#const invented = new Set(getInitialSeedData().auditLogs.map((l) => l.id));`, `server/storage.test.ts#the seed's invented audit records are flagged simulated and absent from exports`
+Test: L1 T14: the seed's invented audit records are flagged simulated and absent from exports
