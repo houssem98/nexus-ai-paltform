@@ -207,7 +207,7 @@ Test: L1 T13: cancelling a finished execution gets 409 and writes no audit recor
 
 ### S32 · audit integrity · high · confidence high
 Editing a workflow rewrites the active version's graph in place, whether published or deployed, and writes no audit record, so a live deployment silently runs the edited graph, for example one without its approval node. Deployment runs and test-invokes also write no audit record. Frozen versions are L3 T3.
-Partly fixed in L1 T13: editing a workflow writes an audit record naming the editor and whether the graph changed. Still open: the edit still rewrites the active version that live deployments run (frozen versions are L3 T3), and deployment runs and test-invokes write no audit record.
+Partly fixed in L1 T13: editing a workflow writes an audit record naming the editor and whether the graph changed. Still open: the edit still rewrites the active version that live deployments run (frozen versions are L3 T3), and deployment runs and test-invokes write no audit record (L2 T12).
 Evidence: `server.ts#activeVer.nodes = nodes;`, `server.ts#action: 'WORKFLOW_UPDATED',`, `server/tenancy.test.ts#editing a workflow graph writes an audit record naming the editor`
 Test: L1 T13: editing a workflow graph writes an audit record naming the editor
 
@@ -249,7 +249,7 @@ Test: L1 T4: a deployment response carries no knowledge document text
 
 ### S39 · authentication · medium · confidence high
 Added in L1 T3, which introduced sign-in: nothing limits failed attempts, per account or per client, so a password can be guessed online at the speed scrypt allows. Read in code.
-Fixed in L1 T11 for one account: five failed sign-ins for an email within fifteen minutes lock it until the oldest is fifteen minutes old, whatever password comes next, and unknown emails count the same way. Still open: one client may try many accounts (no limit per address).
+Fixed in L1 T11 for one account: five failed sign-ins for an email within fifteen minutes lock it until the oldest is fifteen minutes old, whatever password comes next, and unknown emails count the same way. Still open: one client may try many accounts (no limit per address; L6 T11).
 Evidence: `server.ts#const wait = signInLocked(email);`, `server/limits.ts#const MAX_FAILURES = 5;`, `server/tenancy.test.ts#repeated failed sign-ins for one account get 429`
 Test: L1 T11: repeated failed sign-ins for one account get 429
 
